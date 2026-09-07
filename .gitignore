@@ -1,0 +1,13 @@
+# Folder library & environment yang tidak boleh ikut ke upload
+node_modules/
+venv/
+env/
+__pycache__/
+.env
+uploads/
+
+# File database lokal & hasil build
+*.db
+*.sqlite3
+dist/
+build/
