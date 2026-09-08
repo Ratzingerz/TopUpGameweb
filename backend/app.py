@@ -1,3 +1,4 @@
+
 import os
 import uuid
 import jwt
@@ -38,7 +39,8 @@ class Game(db.Model):
     slug = db.Column(db.String(100), unique=True, nullable=False)
     image_url = db.Column(db.String(255))
     account_fields = db.Column(db.String(255), default='User ID') # <--- Format dinamis kolom form
-    products = db.relationship('Product', backref='game', lazy=True)
+    # cascade="all, delete" agar jika game dihapus, produk di dalamnya ikut terhapus otomatis
+    products = db.relationship('Product', backref='game', lazy=True, cascade="all, delete-orphan")
 
 class Product(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -120,7 +122,7 @@ def get_games():
             'name': g.name, 
             'slug': g.slug, 
             'image_url': g.image_url, 
-            'account_fields': g.account_fields, # <--- Mengirim aturan field ke frontend
+            'account_fields': g.account_fields,
             'products': prods
         })
     return jsonify({'data': data})
@@ -139,7 +141,7 @@ def get_game_detail(slug):
                 'name': game.name, 
                 'slug': game.slug, 
                 'image_url': game.image_url, 
-                'account_fields': game.account_fields # <--- Mengirim aturan field ke frontend
+                'account_fields': game.account_fields
             },
             'products': prods,
             'payments': pays
@@ -175,7 +177,7 @@ def checkout():
     trx = Transaction(
         invoice=invoice, 
         user_id=user_id, 
-        account_data=data['account_data'], # <--- Menyimpan string dinamis dari frontend
+        account_data=data['account_data'],
         contact=data['contact'], 
         qty=data['qty'], 
         game_name=data['game_name'], 
@@ -233,7 +235,7 @@ def get_user_transactions(current_user):
         'invoice': t.invoice, 
         'product_name': t.product_name, 
         'qty': t.qty, 
-        'account_data': t.account_data, # <--- Mengirim data akun dinamis
+        'account_data': t.account_data,
         'payment_method': t.payment_method, 
         'total_price': t.total_price, 
         'payment_status': t.payment_status,
@@ -257,7 +259,7 @@ def save_image(file):
 def admin_add_game():
     name = request.form.get('name')
     slug = request.form.get('slug')
-    account_fields = request.form.get('account_fields', 'User ID') # <--- Tangkap input kolom form admin
+    account_fields = request.form.get('account_fields', 'User ID')
     img_url = save_image(request.files.get('image'))
     
     db.session.add(Game(name=name, slug=slug, image_url=img_url, account_fields=account_fields))
@@ -266,10 +268,10 @@ def admin_add_game():
 
 @app.route('/api/admin/games/<int:id>', methods=['PUT'])
 def admin_edit_game(id):
-    game = Game.query.get(id)
+    game = Game.query.get_or_404(id)
     game.name = request.form.get('name')
     game.slug = request.form.get('slug')
-    game.account_fields = request.form.get('account_fields', 'User ID') # <--- Update kolom form admin
+    game.account_fields = request.form.get('account_fields', 'User ID')
     
     img_url = save_image(request.files.get('image'))
     if img_url: 
@@ -278,9 +280,19 @@ def admin_edit_game(id):
     db.session.commit()
     return jsonify({'message': 'Game diupdate'})
 
+# --- TAMBAHAN: Endpoint Hapus Game ---
+@app.route('/api/admin/games/<int:id>', methods=['DELETE'])
+def admin_delete_game(id):
+    game = Game.query.get_or_404(id)
+    db.session.delete(game)
+    db.session.commit()
+    return jsonify({'message': 'Game berhasil dihapus'})
+
 @app.route('/api/admin/products', methods=['POST'])
 def admin_add_product():
-    game_id, name, price = request.form.get('game_id'), request.form.get('name'), request.form.get('price')
+    game_id = request.form.get('game_id')
+    name = request.form.get('name')
+    price = request.form.get('price')
     img_url = save_image(request.files.get('image'))
     db.session.add(Product(game_id=game_id, name=name, price=price, image_url=img_url))
     db.session.commit()
@@ -288,12 +300,23 @@ def admin_add_product():
 
 @app.route('/api/admin/products/<int:id>', methods=['PUT'])
 def admin_edit_product(id):
-    prod = Product.query.get(id)
-    prod.game_id, prod.name, prod.price = request.form.get('game_id'), request.form.get('name'), request.form.get('price')
+    prod = Product.query.get_or_404(id)
+    prod.game_id = request.form.get('game_id')
+    prod.name = request.form.get('name')
+    prod.price = request.form.get('price')
     img_url = save_image(request.files.get('image'))
-    if img_url: prod.image_url = img_url
+    if img_url: 
+        prod.image_url = img_url
     db.session.commit()
     return jsonify({'message': 'Item diupdate'})
+
+# --- TAMBAHAN: Endpoint Hapus Item Produk ---
+@app.route('/api/admin/products/<int:id>', methods=['DELETE'])
+def admin_delete_product(id):
+    prod = Product.query.get_or_404(id)
+    db.session.delete(prod)
+    db.session.commit()
+    return jsonify({'message': 'Item berhasil dihapus'})
 
 @app.route('/api/admin/promos', methods=['GET', 'POST'])
 def admin_promos():
@@ -307,7 +330,7 @@ def admin_promos():
 
 @app.route('/api/admin/promos/<int:id>', methods=['PUT', 'DELETE'])
 def admin_promo_detail(id):
-    promo = Promo.query.get(id)
+    promo = Promo.query.get_or_404(id)
     if request.method == 'DELETE':
         db.session.delete(promo)
     else:
@@ -322,20 +345,28 @@ def admin_payments():
         payments = PaymentMethod.query.all()
         data = []
         for p in payments:
-            game_name = Game.query.get(p.game_id).name if p.game_id else "Semua Game"
-            data.append({'id': p.id, 'name': p.name, 'fee': p.fee, 'game_name': game_name})
+            data.append({'id': p.id, 'name': p.name, 'fee': p.fee, 'game_id': p.game_id})
         return jsonify({'data': data})
     data = request.json
     game_id = data.get('game_id')
-    db.session.add(PaymentMethod(game_id=game_id if game_id else None, name=data['name'], fee=data['fee']))
+    db.session.add(PaymentMethod(game_id=game_id if game_id else None, name=data['name'], fee=data.get('fee', 0)))
     db.session.commit()
     return jsonify({'message': 'Pembayaran dibuat'})
 
-@app.route('/api/admin/payments/<int:id>', methods=['DELETE'])
-def admin_delete_payment(id):
-    db.session.delete(PaymentMethod.query.get(id))
+# --- TAMBAHAN: Endpoint Edit & Hapus Metode Pembayaran ---
+@app.route('/api/admin/payments/<int:id>', methods=['PUT', 'DELETE'])
+def admin_payment_detail(id):
+    payment = PaymentMethod.query.get_or_404(id)
+    if request.method == 'DELETE':
+        db.session.delete(payment)
+    else:
+        data = request.json
+        payment.name = data.get('name', payment.name)
+        payment.fee = data.get('fee', payment.fee)
+        game_id = data.get('game_id')
+        payment.game_id = game_id if game_id else None
     db.session.commit()
-    return jsonify({'message': 'Dihapus'})
+    return jsonify({'message': 'Sukses'})
 
 @app.route('/api/admin/transactions', methods=['GET'])
 def admin_get_transactions():
@@ -346,19 +377,18 @@ def admin_get_transactions():
         'game_name': t.game_name,
         'product_name': t.product_name, 
         'account_data': t.account_data,
-        'contact': t.contact, # <--- Tambahan untuk melihat No WA pembeli
+        'contact': t.contact, 
         'total_price': t.total_price, 
         'payment_method': t.payment_method,
         'payment_status': t.payment_status, 
         'order_status': t.order_status,
-        # Format tanggal menjadi string agar bisa dihitung di React
         'created_at': t.created_at.strftime("%Y-%m-%d %H:%M:%S") if t.created_at else "" 
     } for t in trx]
     return jsonify({'data': data})
 
 @app.route('/api/admin/transactions/<int:id>/status', methods=['PUT'])
 def admin_update_order_status(id):
-    trx = Transaction.query.get(id)
+    trx = Transaction.query.get_or_404(id)
     new_status = request.json.get('order_status')
     if new_status in ['SUCCESS', 'FAILED']:
         trx.order_status = new_status
@@ -380,7 +410,7 @@ def get_invoice_detail(invoice_id):
             'invoice': trx.invoice, 
             'game_name': trx.game_name, 
             'product_name': trx.product_name,
-            'account_data': trx.account_data, # <--- Mengirim data akun dinamis
+            'account_data': trx.account_data, 
             'payment_method': trx.payment_method, 
             'total_price': trx.total_price,
             'payment_status': trx.payment_status, 
@@ -412,15 +442,13 @@ def expire_payment(invoice):
 
 
 # ==========================================
-# SETUP AWAL (JALANKAN SEKALI)
+# SETUP AWAL
 # ==========================================
 def setup_database():
     with app.app_context():
-        # Karena kita mengubah struktur kolom, nyalakan db.drop_all() sekali ini saja, lalu matikan lagi di run berikutnya
-        db.drop_all() 
+        # Opsional: biarkan aktif atau matikan jika tidak ingin tabel ter-drop ulang
         db.create_all()
         
-        # Buat akun admin default
         if not User.query.filter_by(username='admin').first():
             admin = User(username='admin', password_hash=generate_password_hash('admin123'), role='admin')
             db.session.add(admin)

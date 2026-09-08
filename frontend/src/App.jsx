@@ -37,7 +37,6 @@ function GameDetail() {
   const [products, setProducts] = useState([])
   const [payments, setPayments] = useState([])
   
-  // State Dinamis untuk Menyimpan Input Akun (Contoh: { "User ID": "123", "Zone ID": "456" })
   const [accountInputs, setAccountInputs] = useState({})
   
   const [contact, setContact] = useState('')
@@ -45,15 +44,12 @@ function GameDetail() {
   const [qty, setQty] = useState(1)
   const [selectedPayment, setSelectedPayment] = useState(null)
   
-  // State untuk Promo
   const [promoCode, setPromoCode] = useState('')
   const [discount, setDiscount] = useState(0)
   
-  // State untuk Modal Konfirmasi
   const [showModal, setShowModal] = useState(false)
   const [agreed, setAgreed] = useState(false)
 
-  // Ambil Data Game dari Backend
   useEffect(() => {
     axios.get(`http://127.0.0.1:5000/api/games/${slug}`).then(res => {
       setGame(res.data.data.game)
@@ -62,19 +58,16 @@ function GameDetail() {
     }).catch(() => alert('Gagal memuat detail game'))
   }, [slug])
 
-  // Kalkulasi Harga
   const subTotal = selectedProduct ? selectedProduct.price * qty : 0
   const fee = selectedPayment ? selectedPayment.fee : 0
   const grandTotal = subTotal + fee - discount
 
-  // Pecah account_fields dari database (misal: "User ID,Zone ID" menjadi array)
   const requiredFields = game?.account_fields ? game.account_fields.split(',').map(f => f.trim()) : ['User ID']
 
   const handleInputChange = (field, value) => {
     setAccountInputs(prev => ({ ...prev, [field]: value }))
   }
 
-  // Handler Promo
   const applyPromo = async () => {
     try {
       const res = await axios.post('http://127.0.0.1:5000/api/check-promo', { code: promoCode, subtotal: subTotal })
@@ -85,9 +78,7 @@ function GameDetail() {
     }
   }
 
-  // Handler Buka Modal Konfirmasi
   const handleOpenModal = () => {
-    // Validasi apakah semua kotak input dinamis sudah terisi
     const allFieldsFilled = requiredFields.every(field => accountInputs[field] && accountInputs[field].trim() !== '')
     if (!allFieldsFilled || !contact || !selectedProduct || !selectedPayment) {
       return alert("Mohon lengkapi semua kolom Data Akun, Item, Kontak, dan Metode Pembayaran!")
@@ -95,16 +86,13 @@ function GameDetail() {
     setShowModal(true)
   }
 
-  // Handler Checkout
   const handleCheckout = async () => {
     try {
       const token = localStorage.getItem('user_token')
-      
-      // Gabungkan seluruh input dinamis menjadi satu string terstruktur
       const accountDataString = requiredFields.map(field => `${field}: ${accountInputs[field]}`).join(' | ')
 
       const payload = {
-        account_data: accountDataString, // <--- Dikirim ke backend sebagai satu kesatuan string
+        account_data: accountDataString,
         contact: contact, 
         qty: qty,
         game_name: game.name,
@@ -126,7 +114,6 @@ function GameDetail() {
 
   return (
     <div className="max-w-4xl mx-auto p-4 space-y-6">
-      {/* Header Game */}
       <div className="flex gap-4 bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-lg">
         <img src={game.image_url} className="h-24 w-24 rounded-lg object-cover shadow" alt={game.name} />
         <div>
@@ -137,8 +124,6 @@ function GameDetail() {
 
       <div className="flex flex-col md:flex-row gap-6">
         <div className="flex-[2] space-y-6">
-          
-          {/* 1. Masukkan Data Akun (DINAMIS BERDASARKAN DATABASE) */}
           <div className="bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-700">
             <h3 className="font-bold mb-4 text-lg border-b border-gray-700 pb-2">1. Masukkan Data Akun</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -158,7 +143,6 @@ function GameDetail() {
             </div>
           </div>
 
-          {/* 2. Pilih Item */}
           <div className="bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-700">
             <h3 className="font-bold mb-4 text-lg border-b border-gray-700 pb-2">2. Pilih Item</h3>
             <div className="grid grid-cols-2 gap-4">
@@ -175,7 +159,6 @@ function GameDetail() {
               ))}
             </div>
             
-            {/* Pemilihan Kuantitas */}
             {selectedProduct && (
               <div className="mt-6 flex items-center justify-between bg-gray-900 p-4 rounded-lg border border-gray-700">
                 <span className="font-medium text-gray-300">Jumlah Pembelian:</span>
@@ -188,7 +171,6 @@ function GameDetail() {
             )}
           </div>
 
-          {/* 3. Metode Pembayaran */}
           <div className="bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-700">
             <h3 className="font-bold mb-4 text-lg border-b border-gray-700 pb-2">3. Metode Pembayaran</h3>
             <div className="space-y-3">
@@ -210,7 +192,6 @@ function GameDetail() {
           </div>
         </div>
 
-        {/* Sidebar Kanan: Promo, Kontak & Total */}
         <div className="flex-1 space-y-6">
           <div className="bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-700">
             <h3 className="font-bold mb-4 text-lg border-b border-gray-700 pb-2">Kode Promo</h3>
@@ -255,7 +236,6 @@ function GameDetail() {
         </div>
       </div>
 
-      {/* Modal Konfirmasi Pesanan */}
       {showModal && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
           <div className="bg-gray-800 rounded-xl p-6 w-full max-w-md border border-gray-600 shadow-2xl relative">
@@ -263,7 +243,6 @@ function GameDetail() {
             <div className="space-y-3 mb-6 bg-gray-900 p-4 rounded-lg border border-gray-700 text-sm">
               <div className="flex justify-between"><span className="text-gray-400">Game:</span> <span className="font-bold text-white">{game.name}</span></div>
               
-              {/* Tampilkan Semua Field Akun Dinamis di Modal */}
               {requiredFields.map(field => (
                 <div key={field} className="flex justify-between">
                   <span className="text-gray-400">{field}:</span> 
@@ -300,7 +279,6 @@ function GameDetail() {
   )
 }
 
-// Jangan lupa pastikan useEffect dan useState sudah di-import di atas jika belum
 function InvoicePage() {
   const { id } = useParams()
   const [timeLeft, setTimeLeft] = useState(120)
@@ -311,13 +289,11 @@ function InvoicePage() {
   const [invoiceData, setInvoiceData] = useState(null)
   const [isProcessing, setIsProcessing] = useState(false)
 
-  // Normalisasi ID: Tangani karakter # dan %23 dengan aman
   let cleanId = id ? decodeURIComponent(id) : ''
   if (cleanId && !cleanId.startsWith('#')) {
     cleanId = '#' + cleanId
   }
 
-  // Ambil status asli dari backend saat halaman dimuat
   useEffect(() => {
     if (!cleanId) return
 
@@ -330,7 +306,6 @@ function InvoicePage() {
       .catch(() => setPayStatus('Error'))
   }, [cleanId])
 
-  // Efek Countdown Timer (Hanya berjalan jika status masih UNPAID)
   useEffect(() => {
     if (payStatus === 'UNPAID' && timeLeft > 0) {
       const timerId = setInterval(() => setTimeLeft(prev => prev - 1), 1000)
@@ -387,7 +362,6 @@ function InvoicePage() {
         </div>
       )}
       
-      {/* KONDISI 1: Belum Bayar (UNPAID) */}
       {payStatus === 'UNPAID' && (
         <>
           <div className="mb-4">
@@ -408,7 +382,6 @@ function InvoicePage() {
         </>
       )}
 
-      {/* KONDISI 2: Sudah Bayar, Menunggu Admin (PAID & PROCESSING) */}
       {payStatus === 'PAID' && orderStatus === 'PROCESSING' && (
         <div className="p-6 bg-yellow-900/30 border border-yellow-500 rounded-xl mb-6 text-left space-y-2">
           <h3 className="text-lg font-bold text-yellow-400 text-center">Menunggu Diproses Admin</h3>
@@ -420,7 +393,6 @@ function InvoicePage() {
         </div>
       )}
 
-      {/* KONDISI 3: Sukses Sepenuhnya (PAID & SUCCESS) */}
       {payStatus === 'PAID' && orderStatus === 'SUCCESS' && (
         <div className="p-6 bg-green-900/30 border border-green-500 rounded-xl mb-6 text-left space-y-2">
           <h3 className="text-lg font-bold text-green-400 text-center">Transaksi Berhasil!</h3>
@@ -432,7 +404,6 @@ function InvoicePage() {
         </div>
       )}
 
-      {/* KONDISI 4: Expired / Failed */}
       {(payStatus === 'EXPIRED' || orderStatus === 'FAILED') && (
         <div className="p-6 bg-red-900/30 border border-red-500 rounded-xl mb-6 text-left space-y-2">
           <h3 className="text-lg font-bold text-red-400 text-center">Transaksi Gagal / Kadaluarsa</h3>
@@ -466,7 +437,6 @@ function UserTransactions() {
 
     if (token && username) {
       setIsLoggedIn(true)
-      // Ambil riwayat transaksi dari backend Flask
       axios.get('http://127.0.0.1:5000/api/user/transactions', { 
         headers: { Authorization: `Bearer ${token}` } 
       })
@@ -476,7 +446,6 @@ function UserTransactions() {
       })
       .catch(err => {
         console.error("Gagal memuat riwayat:", err)
-        // Jika token kedaluwarsa atau tidak valid, reset status login
         if (err.response?.status === 401) {
           localStorage.removeItem('user_token')
           localStorage.removeItem('username')
@@ -534,7 +503,6 @@ function UserTransactions() {
                 <div className="text-sm text-blue-400 font-mono font-bold">{t.invoice}</div>
                 <div className="text-lg font-semibold mt-1">{t.product_name} (x{t.qty})</div>
                 
-                {/* Data Akun Dinamis & Metode Pembayaran */}
                 <div className="text-xs text-gray-400 mt-2 space-y-1">
                   <div>Data Akun: <span className="text-white font-mono bg-gray-900 px-1.5 py-0.5 rounded border border-gray-700">{t.account_data}</span></div>
                   <div>Metode: <span className="text-gray-200">{t.payment_method}</span></div>
@@ -567,7 +535,6 @@ function UserAuth() {
   const [isLoginMode, setIsLoginMode] = useState(true)
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
-  const navigate = useNavigate()
 
   const handleAuth = async (e) => {
     e.preventDefault()
@@ -578,8 +545,6 @@ function UserAuth() {
         localStorage.setItem('user_token', res.data.token)
         localStorage.setItem('username', res.data.username)
         alert('Login Berhasil!')
-        
-        // Refresh kecil atau reload state agar navbar langsung berubah
         window.location.href = '/' 
       } else {
         alert('Registrasi Berhasil! Silakan Login.')
@@ -589,7 +554,6 @@ function UserAuth() {
       alert(e.response?.data?.message || 'Terjadi kesalahan')
     }
   }
-  // ... (lanjutan form return)
 
   return (
     <div className="max-w-md mx-auto p-6 bg-gray-800 rounded-xl mt-12 border border-gray-700">
@@ -607,7 +571,7 @@ function UserAuth() {
 }
 
 // ==========================================
-// 4. HALAMAN ADMIN (DENGAN CRUD PROMO & PEMBAYARAN PER GAME)
+// 4. HALAMAN ADMIN
 // ==========================================
 function AdminLogin() {
   const [username, setUsername] = useState('')
@@ -639,31 +603,26 @@ function AdminDashboard() {
   const [payments, setPayments] = useState([])
   const [transactions, setTransactions] = useState([]) 
   
-  // State untuk Tab Aktif (dashboard / transactions / reports)
   const [activeTab, setActiveTab] = useState('dashboard')
-  
   const token = localStorage.getItem('admin_token')
 
-  // Game Form
   const [editGameId, setEditGameId] = useState(null)
   const [name, setName] = useState('')
   const [slug, setSlug] = useState('')
   const [accountFields, setAccountFields] = useState('User ID')
   const [imageFile, setImageFile] = useState(null)
 
-  // Product Form
   const [editProdId, setEditProdId] = useState(null)
   const [selectedGameId, setSelectedGameId] = useState('')
   const [prodName, setProdName] = useState('')
   const [prodPrice, setProdPrice] = useState('')
   const [prodImageFile, setProdImageFile] = useState(null)
 
-  // Payment Form
+  const [editPayId, setEditPayId] = useState(null)
   const [payGameId, setPayGameId] = useState('')
   const [payName, setPayName] = useState('')
   const [payFee, setPayFee] = useState('')
 
-  // Promo Form
   const [editPromoId, setEditPromoId] = useState(null)
   const [promoCode, setPromoCode] = useState('')
   const [promoDiscount, setPromoDiscount] = useState('')
@@ -692,7 +651,6 @@ function AdminDashboard() {
     }
   }
 
-  // --- KALKULASI LAPORAN PENDAPATAN ---
   const today = new Date();
   const successfulTransactions = transactions.filter(t => t.payment_status === 'PAID' || t.order_status === 'SUCCESS');
   
@@ -707,9 +665,7 @@ function AdminDashboard() {
   const yearlyRevenue = successfulTransactions
     .filter(t => new Date(t.created_at || Date.now()).getFullYear() === today.getFullYear())
     .reduce((sum, t) => sum + t.total_price, 0);
-  // ------------------------------------
 
-  // Handlers CRUD...
   const handleSaveGame = async (e) => {
     e.preventDefault(); const formData = new FormData();
     formData.append('name', name); formData.append('slug', slug); formData.append('account_fields', accountFields);
@@ -719,22 +675,47 @@ function AdminDashboard() {
     setEditGameId(null); setName(''); setSlug(''); setAccountFields('User ID'); setImageFile(null); fetchData();
   }
 
+  const handleDeleteGame = async (id) => {
+    if (!window.confirm("Hapus game ini beserta seluruh item di dalamnya?")) return
+    await axios.delete(`http://127.0.0.1:5000/api/admin/games/${id}`)
+    fetchData()
+  }
+
   const handleSaveProduct = async (e) => {
     e.preventDefault(); const formData = new FormData();
     formData.append('game_id', selectedGameId); formData.append('name', prodName); formData.append('price', prodPrice);
     if (prodImageFile) formData.append('image', prodImageFile)
     if (editProdId) await axios.put(`http://127.0.0.1:5000/api/admin/products/${editProdId}`, formData)
     else await axios.post('http://127.0.0.1:5000/api/admin/products', formData)
-    setEditProdId(null); setProdName(''); setProdPrice(''); setProdImageFile(null); fetchData();
+    setEditProdId(null); setSelectedGameId(''); setProdName(''); setProdPrice(''); setProdImageFile(null); fetchData();
   }
 
-  const handleAddPayment = async (e) => {
+  const handleDeleteProduct = async (id) => {
+    if (!window.confirm("Hapus item ini?")) return
+    await axios.delete(`http://127.0.0.1:5000/api/admin/products/${id}`)
+    fetchData()
+  }
+
+  const handleSavePayment = async (e) => {
     e.preventDefault();
-    await axios.post('http://127.0.0.1:5000/api/admin/payments', { game_id: payGameId || null, name: payName, fee: payFee || 0 }, { headers: { Authorization: `Bearer ${token}` } })
-    setPayName(''); setPayFee(''); setPayGameId(''); fetchData()
+    const payload = { game_id: payGameId || null, name: payName, fee: payFee || 0 }
+    if (editPayId) {
+      await axios.put(`http://127.0.0.1:5000/api/admin/payments/${editPayId}`, payload, { headers: { Authorization: `Bearer ${token}` } })
+    } else {
+      await axios.post('http://127.0.0.1:5000/api/admin/payments', payload, { headers: { Authorization: `Bearer ${token}` } })
+    }
+    setEditPayId(null); setPayName(''); setPayFee(''); setPayGameId(''); fetchData()
+  }
+
+  const startEditPayment = (pm) => {
+    setEditPayId(pm.id)
+    setPayName(pm.name)
+    setPayFee(pm.fee)
+    setPayGameId(pm.game_id || '')
   }
 
   const handleDeletePayment = async (id) => {
+    if (!window.confirm("Hapus metode pembayaran ini?")) return
     await axios.delete(`http://127.0.0.1:5000/api/admin/payments/${id}`, { headers: { Authorization: `Bearer ${token}` } }); fetchData()
   }
 
@@ -757,8 +738,6 @@ function AdminDashboard() {
 
   return (
     <div className="max-w-7xl mx-auto p-4 space-y-8 mt-6 text-white">
-      
-      {/* HEADER & TAB NAVIGASI (Sembunyi saat diprint) */}
       <div className="print:hidden">
         <div className="bg-red-900/20 border border-red-500/30 p-4 rounded-xl flex justify-between items-center shadow-lg mb-6">
           <h2 className="text-xl font-bold text-red-400">Dashboard Admin</h2>
@@ -778,12 +757,8 @@ function AdminDashboard() {
         </div>
       </div>
 
-      {/* =========================================
-          TAB 1: DASHBOARD MASTER & RINGKASAN
-          ========================================= */}
       {activeTab === 'dashboard' && (
         <div className="space-y-8 print:hidden">
-          {/* Ringkasan Pendapatan di Dashboard */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="bg-gradient-to-br from-green-900 to-gray-900 p-6 rounded-xl border border-green-700/50 shadow-lg">
               <p className="text-sm text-green-300 font-semibold mb-1">Pendapatan Hari Ini</p>
@@ -799,9 +774,7 @@ function AdminDashboard() {
             </div>
           </div>
 
-          {/* Form Master Data */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            {/* Form Game */}
             <div className="bg-gray-800 p-4 rounded-xl border border-gray-700">
               <h3 className="font-bold mb-3 text-blue-400">{editGameId ? 'Edit Game' : 'Tambah Game'}</h3>
               <form onSubmit={handleSaveGame} className="space-y-3">
@@ -819,7 +792,6 @@ function AdminDashboard() {
               </form>
             </div>
 
-            {/* Form Item */}
             <div className="bg-gray-800 p-4 rounded-xl border border-gray-700">
               <h3 className="font-bold mb-3 text-green-400">{editProdId ? 'Edit Item' : 'Tambah Item'}</h3>
               <form onSubmit={handleSaveProduct} className="space-y-3">
@@ -832,26 +804,27 @@ function AdminDashboard() {
                 <input type="file" accept="image/*" onChange={e => setProdImageFile(e.target.files[0])} className="w-full text-xs text-gray-400" />
                 <div className="flex gap-2">
                   <button className="flex-1 bg-green-600 hover:bg-green-700 py-2 rounded text-sm font-bold transition">{editProdId ? 'Update' : 'Tambah'}</button>
-                  {editProdId && <button type="button" onClick={() => {setEditProdId(null); setProdName(''); setProdPrice('')}} className="bg-gray-600 px-2 rounded text-xs">Batal</button>}
+                  {editProdId && <button type="button" onClick={() => {setEditProdId(null); setProdName(''); setProdPrice(''); setSelectedGameId('')}} className="bg-gray-600 px-2 rounded text-xs">Batal</button>}
                 </div>
               </form>
             </div>
 
-            {/* Form Pembayaran */}
             <div className="bg-gray-800 p-4 rounded-xl border border-gray-700">
-              <h3 className="font-bold mb-3 text-purple-400">Tambah Pembayaran</h3>
-              <form onSubmit={handleAddPayment} className="space-y-3">
+              <h3 className="font-bold mb-3 text-purple-400">{editPayId ? 'Edit Pembayaran' : 'Tambah Pembayaran'}</h3>
+              <form onSubmit={handleSavePayment} className="space-y-3">
                 <select className="w-full p-2 bg-gray-900 rounded text-sm outline-none" value={payGameId} onChange={e => setPayGameId(e.target.value)}>
                   <option value="">-- Semua Game --</option>
                   {games.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
                 </select>
                 <input type="text" placeholder="Nama Metode (Misal: BCA)" required className="w-full p-2 bg-gray-900 rounded text-sm" value={payName} onChange={e => setPayName(e.target.value)} />
                 <input type="number" placeholder="Biaya Admin" className="w-full p-2 bg-gray-900 rounded text-sm" value={payFee} onChange={e => setPayFee(e.target.value)} />
-                <button className="w-full bg-purple-600 hover:bg-purple-700 py-2 rounded text-sm font-bold transition">Simpan</button>
+                <div className="flex gap-2">
+                  <button className="flex-1 bg-purple-600 hover:bg-purple-700 py-2 rounded text-sm font-bold transition">{editPayId ? 'Update' : 'Simpan'}</button>
+                  {editPayId && <button type="button" onClick={() => {setEditPayId(null); setPayName(''); setPayFee(''); setPayGameId('')}} className="bg-gray-600 px-2 rounded text-xs">Batal</button>}
+                </div>
               </form>
             </div>
 
-            {/* Form Promo */}
             <div className="bg-gray-800 p-4 rounded-xl border border-gray-700">
               <h3 className="font-bold mb-3 text-yellow-400">{editPromoId ? 'Edit Promo' : 'Tambah Promo'}</h3>
               <form onSubmit={handleSavePromo} className="space-y-3">
@@ -870,30 +843,99 @@ function AdminDashboard() {
             </div>
           </div>
 
-          {/* List Games (Ringkasan) */}
-          <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
-            <h2 className="text-xl font-bold mb-6">Kelola Game & Item</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 space-y-6">
+            <h2 className="text-xl font-bold">Kelola Game & Rincian Item</h2>
+            <div className="space-y-4">
               {games.map(g => (
-                <div key={g.id} className="border border-gray-700 rounded-lg p-3 bg-gray-900/50 flex justify-between items-center">
-                  <div className="flex items-center gap-3">
-                    <img src={g.image_url} className="h-10 w-10 rounded object-cover" alt={g.name} />
-                    <div>
-                      <span className="font-bold text-sm text-blue-400">{g.name}</span>
-                      <div className="text-[10px] text-gray-400">{g.products?.length || 0} Item Tersedia</div>
+                <div key={g.id} className="border border-gray-700 rounded-lg p-4 bg-gray-900/50 space-y-3">
+                  <div className="flex justify-between items-center border-b border-gray-800 pb-2">
+                    <div className="flex items-center gap-3">
+                      <img src={g.image_url} className="h-10 w-10 rounded object-cover" alt={g.name} />
+                      <div>
+                        <span className="font-bold text-base text-blue-400">{g.name}</span>
+                        <div className="text-xs text-gray-400">Format: {g.account_fields} | {g.products?.length || 0} Item</div>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => {setEditGameId(g.id); setName(g.name); setSlug(g.slug); setAccountFields(g.account_fields || 'User ID')}} className="bg-yellow-600/20 text-yellow-400 px-3 py-1 rounded text-xs font-bold hover:bg-yellow-600 hover:text-white transition">Edit Game</button>
+                      <button onClick={() => handleDeleteGame(g.id)} className="bg-red-600/20 text-red-400 px-3 py-1 rounded text-xs font-bold hover:bg-red-600 hover:text-white transition">Hapus Game</button>
                     </div>
                   </div>
-                  <button onClick={() => {setEditGameId(g.id); setName(g.name); setSlug(g.slug); setAccountFields(g.account_fields || 'User ID')}} className="text-yellow-500 hover:underline font-bold text-xs">Edit</button>
+
+                  <div className="pl-4 space-y-2">
+                    <p className="text-xs text-gray-400 font-semibold uppercase tracking-wider">Daftar Item:</p>
+                    {g.products && g.products.length > 0 ? (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                        {g.products.map(prod => (
+                          <div key={prod.id} className="bg-gray-800 p-2.5 rounded border border-gray-700 flex justify-between items-center text-xs">
+                            <div>
+                              <div className="font-bold text-white">{prod.name}</div>
+                              <div className="text-green-400">Rp {prod.price.toLocaleString('id-ID')}</div>
+                            </div>
+                            <div className="flex gap-1">
+                              <button onClick={() => {setEditProdId(prod.id); setSelectedGameId(g.id); setProdName(prod.name); setProdPrice(prod.price)}} className="bg-yellow-600/20 text-yellow-400 px-2 py-0.5 rounded hover:bg-yellow-600 hover:text-white">Edit</button>
+                              <button onClick={() => handleDeleteProduct(prod.id)} className="bg-red-600/20 text-red-400 px-2 py-0.5 rounded hover:bg-red-600 hover:text-white">Hapus</button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-gray-500 italic">Belum ada item untuk game ini.</p>
+                    )}
+                  </div>
                 </div>
               ))}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
+              <h3 className="text-lg font-bold mb-4 text-purple-400">Daftar Metode Pembayaran</h3>
+              <div className="space-y-3">
+                {payments.map(pm => (
+                  <div key={pm.id} className="bg-gray-900 p-3 rounded-lg border border-gray-700 flex justify-between items-center text-sm">
+                    <div>
+                      <span className="font-bold text-white">{pm.name}</span>
+                      <div className="text-xs text-gray-400">Biaya Admin: Rp {pm.fee}</div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => startEditPayment(pm)} className="bg-yellow-600/20 text-yellow-400 hover:bg-yellow-600 hover:text-white px-2.5 py-1 rounded text-xs font-bold transition">Edit</button>
+                      <button onClick={() => handleDeletePayment(pm.id)} className="bg-red-600/20 text-red-400 hover:bg-red-600 hover:text-white px-3 py-1 rounded text-xs font-bold transition">Hapus</button>
+                    </div>
+                  </div>
+                ))}
+                {payments.length === 0 && <p className="text-sm text-gray-500 italic">Belum ada metode pembayaran.</p>}
+              </div>
+            </div>
+
+            {/* DAFTAR KODE PROMO DENGAN STATUS AKTIF / NONAKTIF */}
+            <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
+              <h3 className="text-lg font-bold mb-4 text-yellow-400">Daftar Kode Promo</h3>
+              <div className="space-y-3">
+                {promos.map(pr => (
+                  <div key={pr.id} className="bg-gray-900 p-3 rounded-lg border border-gray-700 flex justify-between items-center text-sm">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-yellow-300 font-mono">{pr.code}</span>
+                        <span className={`text-[10px] px-2 py-0.5 rounded font-bold ${pr.is_active ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'bg-red-500/20 text-red-400 border border-red-500/30'}`}>
+                          {pr.is_active ? 'AKTIF' : 'NONAKTIF'}
+                        </span>
+                      </div>
+                      <div className="text-xs text-gray-400 mt-1">Diskon: Rp {pr.discount.toLocaleString('id-ID')} | Min: Rp {pr.min_spend.toLocaleString('id-ID')}</div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => startEditPromo(pr)} className="bg-yellow-600/20 text-yellow-400 hover:bg-yellow-600 hover:text-white px-2.5 py-1 rounded text-xs font-bold transition">Edit</button>
+                      <button onClick={() => handleDeletePromo(pr.id)} className="bg-red-600/20 text-red-400 hover:bg-red-600 hover:text-white px-2.5 py-1 rounded text-xs font-bold transition">Hapus</button>
+                    </div>
+                  </div>
+                ))}
+                {promos.length === 0 && <p className="text-sm text-gray-500 italic">Belum ada kode promo.</p>}
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* =========================================
-          TAB 2: PANTAUAN TRANSAKSI (Tabel Eksekusi)
-          ========================================= */}
       {activeTab === 'transactions' && (
         <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 print:hidden">
           <h2 className="text-xl font-bold mb-6 text-white">Antrean Transaksi Masuk</h2>
@@ -946,20 +988,14 @@ function AdminDashboard() {
         </div>
       )}
 
-      {/* =========================================
-          TAB 3: LAPORAN KEUANGAN (Bisa di-Print)
-          ========================================= */}
       {activeTab === 'reports' && (
         <div className="bg-white print:bg-white text-black p-8 rounded-xl shadow-lg border border-gray-200 print:border-none print:shadow-none print:p-0">
-          
-          {/* Header Print Laporan */}
           <div className="flex justify-between items-end border-b-2 border-gray-800 pb-4 mb-6">
             <div>
               <h1 className="text-3xl font-extrabold text-gray-900 uppercase tracking-wider">Laporan Pendapatan</h1>
               <p className="text-gray-600 mt-1">Dicetak pada: {new Date().toLocaleString('id-ID')}</p>
             </div>
             
-            {/* Tombol Print: Disembunyikan saat kertas diprint (print:hidden) */}
             <button 
               onClick={() => window.print()} 
               className="bg-gray-900 hover:bg-gray-800 text-white px-6 py-2 rounded-lg font-bold transition print:hidden flex items-center gap-2 shadow-lg"
@@ -968,7 +1004,6 @@ function AdminDashboard() {
             </button>
           </div>
 
-          {/* Rincian Kartu Laporan Versi Terang */}
           <div className="grid grid-cols-3 gap-4 mb-8">
             <div className="border border-gray-300 p-4 rounded-lg bg-gray-50 text-center">
               <p className="text-xs text-gray-500 font-bold uppercase mb-1">Hari Ini</p>
@@ -986,7 +1021,6 @@ function AdminDashboard() {
 
           <h3 className="text-lg font-bold text-gray-800 mb-4">Rincian Transaksi Sukses</h3>
           
-          {/* Tabel Hitam Putih Untuk Print */}
           <table className="w-full text-left border-collapse text-sm">
             <thead>
               <tr className="bg-gray-100 text-gray-700 border-y-2 border-gray-800">
@@ -1030,7 +1064,6 @@ function AdminDashboard() {
           </div>
         </div>
       )}
-
     </div>
   )
 }
@@ -1078,7 +1111,6 @@ export default function App() {
             <Route path="/riwayat" element={<UserTransactions />} />
             <Route path="/user/login" element={<UserAuth />} />
             
-            {/* Jalur Khusus Admin */}
             <Route path="/admin" element={<AdminLogin />} />
             <Route path="/admin/dashboard" element={<AdminDashboard />} />
           </Routes>
