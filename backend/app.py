@@ -14,9 +14,9 @@ app = Flask(__name__)
 CORS(app)
 
 # Konfigurasi Database & Upload
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL') or 'mysql+pymysql://root:admin@localhost/mytopup_db'
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY') or 'kunci-rahasia-default-buat-dev'
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY') 
 app.config['UPLOAD_FOLDER'] = 'uploads'
 
 # Buat folder uploads jika belum ada
