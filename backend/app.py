@@ -1,4 +1,3 @@
-
 import os
 import uuid
 import jwt
@@ -38,8 +37,7 @@ class Game(db.Model):
     name = db.Column(db.String(100), nullable=False)
     slug = db.Column(db.String(100), unique=True, nullable=False)
     image_url = db.Column(db.String(255))
-    account_fields = db.Column(db.String(255), default='User ID') # <--- Format dinamis kolom form
-    # cascade="all, delete" agar jika game dihapus, produk di dalamnya ikut terhapus otomatis
+    account_fields = db.Column(db.String(255), default='User ID')
     products = db.relationship('Product', backref='game', lazy=True, cascade="all, delete-orphan")
 
 class Product(db.Model):
@@ -66,7 +64,7 @@ class Transaction(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     invoice = db.Column(db.String(50), unique=True, nullable=False)
     user_id = db.Column(db.Integer, nullable=True)
-    account_data = db.Column(db.Text, nullable=False) # <--- Menyimpan gabungan input dinamis
+    account_data = db.Column(db.Text, nullable=False)
     contact = db.Column(db.String(50), nullable=False)
     qty = db.Column(db.Integer, default=1)
     game_name = db.Column(db.String(100)) 
@@ -77,6 +75,16 @@ class Transaction(db.Model):
     payment_status = db.Column(db.String(20), default='UNPAID') 
     order_status = db.Column(db.String(20), default='PENDING')  
     
+    created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
+    admin_note = db.Column(db.Text, nullable=True)
+
+class TransactionAuditLog(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    transaction_id = db.Column(db.Integer, db.ForeignKey('transaction.id'), nullable=False)
+    admin_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+    old_status = db.Column(db.String(20))
+    new_status = db.Column(db.String(20))
+    admin_note = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
 
 
@@ -226,7 +234,6 @@ def admin_login():
     token = jwt.encode({'user_id': user.id, 'role': 'admin', 'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=24)}, app.config['SECRET_KEY'])
     return jsonify({'token': token})
 
-
 @app.route('/api/user/transactions', methods=['GET'])
 @token_required
 def get_user_transactions(current_user):
@@ -280,7 +287,6 @@ def admin_edit_game(id):
     db.session.commit()
     return jsonify({'message': 'Game diupdate'})
 
-# --- TAMBAHAN: Endpoint Hapus Game ---
 @app.route('/api/admin/games/<int:id>', methods=['DELETE'])
 def admin_delete_game(id):
     game = Game.query.get_or_404(id)
@@ -310,7 +316,6 @@ def admin_edit_product(id):
     db.session.commit()
     return jsonify({'message': 'Item diupdate'})
 
-# --- TAMBAHAN: Endpoint Hapus Item Produk ---
 @app.route('/api/admin/products/<int:id>', methods=['DELETE'])
 def admin_delete_product(id):
     prod = Product.query.get_or_404(id)
@@ -353,7 +358,6 @@ def admin_payments():
     db.session.commit()
     return jsonify({'message': 'Pembayaran dibuat'})
 
-# --- TAMBAHAN: Endpoint Edit & Hapus Metode Pembayaran ---
 @app.route('/api/admin/payments/<int:id>', methods=['PUT', 'DELETE'])
 def admin_payment_detail(id):
     payment = PaymentMethod.query.get_or_404(id)
@@ -368,9 +372,26 @@ def admin_payment_detail(id):
     db.session.commit()
     return jsonify({'message': 'Sukses'})
 
+# --- UPDATE: Transaksi Admin dengan Search & Filter ---
 @app.route('/api/admin/transactions', methods=['GET'])
 def admin_get_transactions():
-    trx = Transaction.query.order_by(Transaction.id.desc()).all()
+    query = Transaction.query
+
+    search = request.args.get('search', '')
+    payment_status = request.args.get('payment_status', '')
+    order_status = request.args.get('order_status', '')
+    game_name = request.args.get('game_name', '')
+
+    if search:
+        query = query.filter((Transaction.invoice.ilike(f"%{search}%")) | (Transaction.contact.ilike(f"%{search}%")))
+    if payment_status:
+        query = query.filter(Transaction.payment_status == payment_status)
+    if order_status:
+        query = query.filter(Transaction.order_status == order_status)
+    if game_name:
+        query = query.filter(Transaction.game_name.ilike(f"%{game_name}%"))
+
+    trx = query.order_by(Transaction.id.desc()).all()
     data = [{
         'id': t.id, 
         'invoice': t.invoice, 
@@ -382,19 +403,76 @@ def admin_get_transactions():
         'payment_method': t.payment_method,
         'payment_status': t.payment_status, 
         'order_status': t.order_status,
+        'admin_note': t.admin_note,
         'created_at': t.created_at.strftime("%Y-%m-%d %H:%M:%S") if t.created_at else "" 
     } for t in trx]
     return jsonify({'data': data})
 
+# --- TAMBAHAN: Detail Transaksi & Log ---
+@app.route('/api/admin/transactions/<int:id>', methods=['GET'])
+def admin_get_transaction_detail(id):
+    t = Transaction.query.get_or_404(id)
+    logs = TransactionAuditLog.query.filter_by(transaction_id=id).order_by(TransactionAuditLog.id.desc()).all()
+
+    log_data = [{
+        'old_status': l.old_status,
+        'new_status': l.new_status,
+        'admin_note': l.admin_note,
+        'created_at': l.created_at.strftime("%Y-%m-%d %H:%M:%S") if l.created_at else ""
+    } for l in logs]
+
+    return jsonify({
+        'data': {
+            'id': t.id,
+            'invoice': t.invoice,
+            'user_id': t.user_id,
+            'account_data': t.account_data,
+            'contact': t.contact,
+            'game_name': t.game_name,
+            'product_name': t.product_name,
+            'payment_method': t.payment_method,
+            'total_price': t.total_price,
+            'payment_status': t.payment_status,
+            'order_status': t.order_status,
+            'admin_note': t.admin_note,
+            'created_at': t.created_at.strftime("%Y-%m-%d %H:%M:%S") if t.created_at else "",
+            'audit_logs': log_data
+        }
+    })
+
+# --- UPDATE: Update Status, Admin Note & Audit Log ---
 @app.route('/api/admin/transactions/<int:id>/status', methods=['PUT'])
-def admin_update_order_status(id):
+@token_required
+def admin_update_order_status(current_user, id):
+    if current_user.role != 'admin':
+        return jsonify({'message': 'Akses Ditolak: Bukan Admin'}), 403
+
     trx = Transaction.query.get_or_404(id)
-    new_status = request.json.get('order_status')
-    if new_status in ['SUCCESS', 'FAILED']:
+    data = request.json
+    
+    new_status = data.get('order_status')
+    admin_note = data.get('admin_note')
+
+    old_status = trx.order_status
+
+    if new_status and new_status in ['PENDING', 'PROCESSING', 'SUCCESS', 'FAILED']:
         trx.order_status = new_status
-        db.session.commit()
-        return jsonify({'message': 'Status berhasil diubah'})
-    return jsonify({'message': 'Status tidak valid'}), 400
+        
+    if admin_note is not None:
+        trx.admin_note = admin_note
+
+    log = TransactionAuditLog(
+        transaction_id=trx.id,
+        admin_id=current_user.id,
+        old_status=old_status,
+        new_status=trx.order_status,
+        admin_note=admin_note
+    )
+    db.session.add(log)
+    db.session.commit()
+    
+    return jsonify({'message': 'Status dan catatan berhasil diubah'})
+
 
 # ==========================================
 # API SIMULASI PEMBAYARAN & INVOICE
@@ -440,13 +518,19 @@ def expire_payment(invoice):
         db.session.commit()
     return jsonify({'message': 'Kadaluarsa'})
 
+@app.route('/')
+def home():
+    return jsonify({
+        "status": "success",
+        "message": "Backend MyTopup API Berjalan dengan Baik!"
+    })
+
 
 # ==========================================
 # SETUP AWAL
 # ==========================================
 def setup_database():
     with app.app_context():
-        # Opsional: biarkan aktif atau matikan jika tidak ingin tabel ter-drop ulang
         db.create_all()
         
         if not User.query.filter_by(username='admin').first():
