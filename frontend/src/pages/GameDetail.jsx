@@ -134,6 +134,9 @@ export default function GameDetail() {
       return;
     }
 
+    // Ambil token user dari localStorage agar transaksi terikat ke akun yang sedang login
+    const token = localStorage.getItem('user_token');
+
     const combinedAccountData = accountFieldsList
       .map((label, idx) => accountFormValues[idx] ? `${accountFormValues[idx]}` : '')
       .filter(Boolean)
@@ -157,7 +160,11 @@ export default function GameDetail() {
     try {
       const res = await fetch('http://localhost:5000/api/checkout', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          
+          'Authorization': token ? `Bearer ${token}` : '' 
+        },
         body: JSON.stringify(payload)
       });
       const data = await res.json();

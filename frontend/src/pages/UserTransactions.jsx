@@ -14,18 +14,24 @@ export default function UserTransactions() {
     }
 
     fetch('http://localhost:5000/api/user/transactions', {
+      method: 'GET',
       headers: {
+        'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`
       }
     })
-      .then(res => res.json())
-      .then(data => {
+      .then(async (res) => {
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.message || 'Gagal mengambil data');
+        }
         setTransactions(data.data || []);
-        setLoading(false);
       })
       .catch(err => {
         console.error('Gagal memuat riwayat:', err);
-        setLoading(false);
+      })
+      .finally(() => {
+        setLoading(false); // Dijamin berhenti loading apapun hasilnya
       });
   }, [token]);
 
@@ -33,7 +39,10 @@ export default function UserTransactions() {
     return (
       <div className="max-w-md mx-auto mt-16 text-center p-6 bg-gray-800 rounded-xl border border-gray-700 space-y-4">
         <p className="text-gray-300 text-sm">Kamu harus login terlebih dahulu untuk melihat riwayat transaksi.</p>
-        <button onClick={() => navigate('/user/login')} className="px-6 py-2 bg-blue-600 rounded-lg text-sm font-bold">
+        <button 
+          onClick={() => navigate('/user/login')} 
+          className="px-6 py-2 bg-blue-600 hover:bg-blue-500 transition rounded-lg text-sm font-bold text-white"
+        >
           Login Sekarang
         </button>
       </div>

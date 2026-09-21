@@ -8,6 +8,7 @@ from flask_cors import CORS
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from datetime import datetime, timezone, timedelta
+from flask_cors import CORS
 
 app = Flask(__name__)
 CORS(app)
@@ -195,36 +196,42 @@ def check_promo():
 def checkout():
     data = request.json
     user_id = None
-    if 'Authorization' in request.headers:
-        parts = request.headers['Authorization'].split(" ")
-        if len(parts) == 2:
-            token = parts[1]
-            try:
+    
+    # Cek dan ambil user_id dari token Authorization
+    auth_header = request.headers.get('Authorization')
+    if auth_header:
+        try:
+            parts = auth_header.split(" ")
+            if len(parts) == 2:
+                token = parts[1]
                 decoded = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
                 user_id = decoded.get('user_id')
-            except:
-                pass 
+        except Exception as e:
+            print("Error decode token saat checkout:", e)
             
+    # Format invoice tanpa tanda '#' agar tidak merusak router frontend
     date_str = datetime.now(timezone.utc).strftime("%Y%m%d")
-    count_today = Transaction.query.filter(Transaction.invoice.like(f"#TOP-{date_str}-%")).count() + 1
-    invoice = f"#TOP-{date_str}-{count_today:03d}"
+    count_today = Transaction.query.filter(Transaction.invoice.like(f"TOP-{date_str}-%")).count() + 1
+    invoice = f"TOP-{date_str}-{count_today:03d}"
     
     trx = Transaction(
         invoice=invoice, 
-        user_id=user_id, 
-        account_data=data['account_data'],
-        contact=data['contact'], 
-        qty=data['qty'], 
-        game_name=data['game_name'], 
-        product_name=data['product_name'],
-        payment_method=data['payment_method'], 
-        total_price=data['total_price'],
+        user_id=user_id, # Sekarang akan terisi ID user jika frontend mengirim token!
+        account_data=data.get('account_data'),
+        contact=data.get('contact'), 
+        qty=data.get('qty', 1), 
+        game_name=data.get('game_name'), 
+        product_name=data.get('product_name'),
+        payment_method=data.get('payment_method'), 
+        total_price=data.get('total_price'),
         payment_status='UNPAID', 
         order_status='PENDING'
     )
+    
     db.session.add(trx)
     db.session.commit()
-    return jsonify({'invoice': invoice})
+    
+    return jsonify({'success': True, 'invoice': invoice}), 201
 
 
 # ==========================================
@@ -572,6 +579,34 @@ def admin_update_transaction_status(current_admin, id):
     
     return jsonify({'success': True, 'message': 'Transaksi berhasil diperbarui dan dicatat ke audit log'})
 
+@app.route('/api/admin/transactions/<int:id>/payment-status', methods=['PUT'])
+@admin_required
+def admin_update_payment_status(current_admin, id):
+    data = request.json
+    trx = Transaction.query.get_or_404(id)
+    
+    new_payment_status = data.get('payment_status')
+    
+    if new_payment_status:
+        trx.payment_status = new_payment_status
+        # Jika dibayar, otomatis ubah status pesanan menjadi PROCESSING
+        if new_payment_status == 'PAID':
+            trx.order_status = 'PROCESSING'
+            
+    # Catat ke audit log agar rapi sesuai sistem Anda
+    log = TransactionAuditLog(
+        transaction_id=trx.id,
+        admin_id=current_admin.id,
+        action=f"Payment status changed to {new_payment_status}",
+        old_status=trx.payment_status,
+        new_status=new_payment_status,
+        admin_note="Diubah melalui panel admin"
+    )
+    db.session.add(log)
+    db.session.commit()
+    
+    return jsonify({'success': True, 'message': 'Status pembayaran berhasil diperbarui'})
+
 
 # ==========================================
 # API SIMULASI PEMBAYARAN & INVOICE
@@ -594,6 +629,25 @@ def get_invoice_detail(invoice_id):
             'order_status': trx.order_status
         }
     })
+
+@app.route('/api/transactions/<int:id>/pay', methods=['POST'])
+def pay_transaction(id):
+    transaction = Transaction.query.get_or_404(id)
+    transaction.payment_status = 'PAID'
+    transaction.order_status = 'PROCESSING' # Otomatis ubah status pesanan jadi diproses
+
+    # Tambahkan ke audit log jika ada
+    new_log = TransactionAuditLog(
+        transaction_id=transaction.id,
+        action="PAYMENT_SUCCESS",
+        old_status="UNPAID",
+        new_status="PAID",
+        admin_note="Dibayar via simulasi QR"
+    )
+    db.session.add(new_log)
+    db.session.commit()
+
+    return jsonify({'status': 'success', 'message': 'Pembayaran berhasil dikonfirmasi'})
 
 @app.route('/api/checkout/<path:invoice>/pay', methods=['POST'])
 def simulate_payment(invoice):

@@ -49,7 +49,7 @@ export default function AdminDashboard() {
   }, []);
 
   useEffect(() => {
-    if (activeTab === 'transactions') {
+    if (activeTab === 'transactions' || activeTab === 'dashboard') {
       loadTransactions();
     }
   }, [searchQuery, filterOrderStatus, filterPaymentStatus, activeTab]);
@@ -273,8 +273,23 @@ export default function AdminDashboard() {
     }
   };
 
+  // --- ANALYTICS COMPUTATIONS ---
   const successfulTransactions = transactions.filter(t => t.order_status === 'SUCCESS' || t.order_status === 'PROCESSING');
-  const dailyRevenue = successfulTransactions.reduce((acc, t) => acc + t.total_price, 0);
+  const totalRevenue = successfulTransactions.reduce((acc, t) => acc + t.total_price, 0);
+  const totalOrdersCount = transactions.length;
+  const successRate = totalOrdersCount > 0 ? Math.round((successfulTransactions.length / totalOrdersCount) * 100) : 0;
+
+  // Hitung Popular Games berdasarkan transaksi
+  const gameSalesCount = transactions.reduce((acc, t) => {
+    acc[t.game_name] = (acc[t.game_name] || 0) + 1;
+    return acc;
+  }, {});
+  const popularGamesSorted = Object.entries(gameSalesCount)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5);
+
+  // 5 Transaksi Terbaru (Recent Transactions)
+  const recentTransactions = [...transactions].slice(0, 5);
 
   return (
     <div className="max-w-6xl mx-auto p-4 space-y-6 text-white">
@@ -282,7 +297,7 @@ export default function AdminDashboard() {
         <h1 className="text-2xl font-bold">Admin Panel Dashboard</h1>
         <div className="flex gap-2">
           <button onClick={() => setActiveTab('dashboard')} className={`px-5 py-2.5 rounded-t-lg font-bold transition ${activeTab === 'dashboard' ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>
-            🕹️ Kelola Toko
+            🕹️ Kelola & Analitik Toko
           </button>
           <button onClick={() => setActiveTab('transactions')} className={`px-5 py-2.5 rounded-t-lg font-bold transition ${activeTab === 'transactions' ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>
             ⚡ Transaksi & Log
@@ -295,18 +310,146 @@ export default function AdminDashboard() {
 
       {activeTab === 'dashboard' && (
         <div className="space-y-8 print:hidden">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="bg-gradient-to-br from-green-900 to-gray-900 p-6 rounded-xl border border-green-700/50 shadow-lg">
-              <p className="text-sm text-green-300 font-semibold mb-1">Total Pendapatan (Sukses/Proses)</p>
-              <h3 className="text-3xl font-bold text-white">Rp {dailyRevenue.toLocaleString('id-ID')}</h3>
+          
+          {/* TAHAP 2: STATISTIK KARTU (METRICS) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="bg-gray-800 p-5 rounded-xl border border-gray-700 shadow-md">
+              <p className="text-xs text-gray-400 font-semibold mb-1">Total Pendapatan</p>
+              <h3 className="text-2xl font-black text-green-400">Rp {totalRevenue.toLocaleString('id-ID')}</h3>
+              <p className="text-[10px] text-gray-500 mt-2">Dari pesanan sukses & diproses</p>
+            </div>
+            <div className="bg-gray-800 p-5 rounded-xl border border-gray-700 shadow-md">
+              <p className="text-xs text-gray-400 font-semibold mb-1">Total Pesanan</p>
+              <h3 className="text-2xl font-black text-blue-400">{totalOrdersCount} Transaksi</h3>
+              <p className="text-[10px] text-gray-500 mt-2">Semua status pesanan</p>
+            </div>
+            <div className="bg-gray-800 p-5 rounded-xl border border-gray-700 shadow-md">
+              <p className="text-xs text-gray-400 font-semibold mb-1">Tingkat Keberhasilan</p>
+              <h3 className="text-2xl font-black text-purple-400">{successRate}%</h3>
+              <p className="text-[10px] text-gray-500 mt-2">Rasio pesanan sukses</p>
+            </div>
+            <div className="bg-gray-800 p-5 rounded-xl border border-gray-700 shadow-md">
+              <p className="text-xs text-gray-400 font-semibold mb-1">Total Game Terdaftar</p>
+              <h3 className="text-2xl font-black text-yellow-400">{games.length} Game</h3>
+              <p className="text-[10px] text-gray-500 mt-2">Aktif di etalase toko</p>
             </div>
           </div>
 
+          {/* TAHAP 2: CHART & POPULAR GAMES ANALYTICS */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            
+            {/* Visualisasi Grafik Sederhana (Chart) */}
+            <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 lg:col-span-2 space-y-4">
+              <div className="flex justify-between items-center">
+                <h3 className="font-bold text-base text-white">📈 Tren Pendapatan & Volume Transaksi</h3>
+                <span className="text-xs text-gray-400 bg-gray-900 px-3 py-1 rounded border border-gray-700">Real-time</span>
+              </div>
+              <div className="h-64 bg-gray-900 rounded-xl border border-gray-700 p-4 flex flex-col justify-end">
+                {/* Simulated Chart Bars */}
+                <div className="flex items-end justify-between h-44 gap-2 px-2 border-b border-gray-800 pb-2">
+                  {transactions.slice(-7).map((t, idx) => {
+  // Hitung tinggi berbasis piksel (maksimal tinggi batang 120px)
+  const maxPrice = Math.max(...transactions.map(item => item.total_price), 1);
+  const barHeight = Math.max(15, (t.total_price / maxPrice) * 120);
+  
+  return (
+    <div key={idx} className="flex-1 flex flex-col items-center justify-end gap-1 group relative h-full">
+      <div 
+        className="w-full bg-blue-600 hover:bg-blue-500 rounded-t transition-all duration-300 cursor-pointer"
+        style={{ height: `${barHeight}px` }}
+        title={`Invoice: ${t.invoice} | Rp ${t.total_price.toLocaleString('id-ID')}`}
+      ></div>
+      <span className="text-[9px] text-gray-400 truncate w-full text-center font-mono">#{t.id}</span>
+    </div>
+  );
+})}
+                  {transactions.length === 0 && (
+                    <div className="w-full h-full flex items-center justify-center text-xs text-gray-500">Belum ada data grafik transaksi.</div>
+                  )}
+                </div>
+                <div className="flex justify-between text-[10px] text-gray-400 pt-2 px-2">
+                  <span>Transaksi Terdahulu</span>
+                  <span>Transaksi Terbaru</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Popular Games Widget */}
+            <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 space-y-4">
+              <h3 className="font-bold text-base text-white">🔥 Popular Games</h3>
+              <div className="space-y-3">
+                {popularGamesSorted.length > 0 ? (
+                  popularGamesSorted.map(([gName, count], idx) => (
+                    <div key={idx} className="bg-gray-900 p-3 rounded-lg border border-gray-700 flex justify-between items-center text-xs">
+                      <div className="flex items-center gap-2">
+                        <span className="w-5 h-5 rounded-full bg-blue-600/20 text-blue-400 flex items-center justify-center font-bold text-[10px]">#{idx + 1}</span>
+                        <span className="font-bold text-white">{gName}</span>
+                      </div>
+                      <span className="text-gray-400 font-mono">{count} Order</span>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-xs text-gray-500 italic py-6 text-center">Belum ada data penjualan game.</p>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* TAHAP 2: RECENT TRANSACTIONS WIDGET */}
+          <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 space-y-4">
+            <div className="flex justify-between items-center">
+              <h3 className="font-bold text-base text-white">⚡ Transaksi Terbaru (Recent Transactions)</h3>
+              <button onClick={() => setActiveTab('transactions')} className="text-xs text-blue-400 hover:underline">Lihat Semua →</button>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse whitespace-nowrap text-xs">
+                <thead>
+                  <tr className="bg-gray-900 text-gray-400 border-b border-gray-700">
+                    <th className="p-3">Invoice</th>
+                    <th className="p-3">Game & Item</th>
+                    <th className="p-3">Kontak / Akun</th>
+                    <th className="p-3">Total</th>
+                    <th className="p-3">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {recentTransactions.map(t => (
+                    <tr key={t.id} className="border-b border-gray-700 hover:bg-gray-900/50">
+                      <td className="p-3 font-mono font-bold text-blue-400">{t.invoice}</td>
+                      <td className="p-3">
+                        <div className="font-semibold">{t.game_name}</div>
+                        <div className="text-[10px] text-gray-400">{t.product_name}</div>
+                      </td>
+                      <td className="p-3">
+                        <div className="font-mono">{t.account_data}</div>
+                        <div className="text-[10px] text-gray-400">{t.contact}</div>
+                      </td>
+                      <td className="p-3 font-bold text-green-400">Rp {t.total_price.toLocaleString('id-ID')}</td>
+                      <td className="p-3">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${t.order_status === 'SUCCESS' ? 'bg-green-500/20 text-green-400' : t.order_status === 'PROCESSING' ? 'bg-blue-500/20 text-blue-400' : 'bg-yellow-500/20 text-yellow-400'}`}>
+                          {t.order_status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                  {recentTransactions.length === 0 && (
+                    <tr>
+                      <td colSpan="5" className="text-center p-6 text-gray-500">Belum ada transaksi tercatat.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <hr className="border-gray-700 my-6" />
+
+          {/* Forms Section (Game, Item, Pembayaran, Promo) */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             {/* Form Game */}
             <div className="bg-gray-800 p-4 rounded-xl border border-gray-700">
               <div className="flex justify-between items-center mb-3">
-                <h3 className="font-bold text-blue-400">{editGameId ? 'Edit Game' : 'Tambah Game'}</h3>
+                <h3 className="font-bold text-blue-400 text-sm">{editGameId ? 'Edit Game' : 'Tambah Game'}</h3>
                 {editGameId && <button onClick={resetGameForm} className="text-xs text-gray-400 hover:text-white underline">Batal</button>}
               </div>
               <form onSubmit={handleSaveGame} className="space-y-3">
@@ -324,7 +467,7 @@ export default function AdminDashboard() {
             {/* Form Item */}
             <div className="bg-gray-800 p-4 rounded-xl border border-gray-700">
               <div className="flex justify-between items-center mb-3">
-                <h3 className="font-bold text-green-400">{editProductId ? 'Edit Item' : 'Tambah Item Game'}</h3>
+                <h3 className="font-bold text-green-400 text-sm">{editProductId ? 'Edit Item' : 'Tambah Item Game'}</h3>
                 {editProductId && <button onClick={resetProductForm} className="text-xs text-gray-400 hover:text-white underline">Batal</button>}
               </div>
               <form onSubmit={handleSaveProduct} className="space-y-3">
@@ -345,7 +488,7 @@ export default function AdminDashboard() {
             {/* Form Pembayaran */}
             <div className="bg-gray-800 p-4 rounded-xl border border-gray-700">
               <div className="flex justify-between items-center mb-3">
-                <h3 className="font-bold text-purple-400">{editPaymentId ? 'Edit Pembayaran' : 'Tambah Pembayaran'}</h3>
+                <h3 className="font-bold text-purple-400 text-sm">{editPaymentId ? 'Edit Pembayaran' : 'Tambah Pembayaran'}</h3>
                 {editPaymentId && <button onClick={resetPaymentForm} className="text-xs text-gray-400 hover:text-white underline">Batal</button>}
               </div>
               <form onSubmit={handleSavePayment} className="space-y-3">
@@ -362,7 +505,7 @@ export default function AdminDashboard() {
             {/* Form Promo */}
             <div className="bg-gray-800 p-4 rounded-xl border border-gray-700">
               <div className="flex justify-between items-center mb-3">
-                <h3 className="font-bold text-yellow-400">{editPromoId ? 'Edit Promo' : 'Tambah Promo'}</h3>
+                <h3 className="font-bold text-yellow-400 text-sm">{editPromoId ? 'Edit Promo' : 'Tambah Promo'}</h3>
                 {editPromoId && <button onClick={resetPromoForm} className="text-xs text-gray-400 hover:text-white underline">Batal</button>}
               </div>
               <form onSubmit={handleSavePromo} className="space-y-3">
@@ -378,7 +521,7 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          {/* List Management Section (Games & Products nested, Payments, Promos) */}
+          {/* List Management Section */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             
             {/* List Game & Produknya */}
@@ -398,7 +541,6 @@ export default function AdminDashboard() {
                       </div>
                     </div>
 
-                    {/* List Produk di dalam Game */}
                     <div className="space-y-2 pl-2">
                       <div className="text-xs font-semibold text-gray-300">Daftar Item / Produk:</div>
                       {g.products && g.products.length > 0 ? (
@@ -473,117 +615,179 @@ export default function AdminDashboard() {
       )}
 
       {activeTab === 'transactions' && (
-        <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 print:hidden space-y-4">
-          <div className="flex flex-col md:flex-row justify-between gap-4 items-center">
-            <h2 className="text-xl font-bold text-white">Antrean Transaksi & Audit Log</h2>
-            <div className="flex flex-wrap gap-2 w-full md:w-auto">
-              <input 
-                type="text" 
-                placeholder="Cari Invoice, Kontak, Akun..." 
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                className="p-2 bg-gray-900 border border-gray-700 rounded text-sm text-white outline-none flex-1 md:w-64"
-              />
-              <select value={filterOrderStatus} onChange={e => setFilterOrderStatus(e.target.value)} className="p-2 bg-gray-900 border border-gray-700 rounded text-sm text-white outline-none">
-                <option value="">Semua Status Pesanan</option>
-                <option value="PENDING">PENDING</option>
-                <option value="PROCESSING">PROCESSING</option>
-                <option value="SUCCESS">SUCCESS</option>
-                <option value="FAILED">FAILED</option>
-              </select>
-              <select value={filterPaymentStatus} onChange={e => setFilterPaymentStatus(e.target.value)} className="p-2 bg-gray-900 border border-gray-700 rounded text-sm text-white outline-none">
-                <option value="">Semua Pembayaran</option>
-                <option value="UNPAID">UNPAID</option>
-                <option value="PAID">PAID</option>
-                <option value="EXPIRED">EXPIRED</option>
-              </select>
-            </div>
-          </div>
+  <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 space-y-6">
+    <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+      <h3 className="font-bold text-lg text-white">⚡ Kelola Transaksi & Log</h3>
+      <div className="flex flex-wrap gap-2 w-full md:w-auto">
+        <input 
+          type="text" 
+          placeholder="Cari Invoice / Kontak..." 
+          value={searchQuery} 
+          onChange={e => setSearchQuery(e.target.value)}
+          className="bg-gray-900 border border-gray-700 px-3 py-2 rounded text-xs text-white flex-1 md:w-60"
+        />
+        <select 
+          value={filterOrderStatus} 
+          onChange={e => setFilterOrderStatus(e.target.value)}
+          className="bg-gray-900 border border-gray-700 px-3 py-2 rounded text-xs text-white"
+        >
+          <option value="">Semua Status Order</option>
+          <option value="PENDING">PENDING</option>
+          <option value="PROCESSING">PROCESSING</option>
+          <option value="SUCCESS">SUCCESS</option>
+          <option value="FAILED">FAILED</option>
+        </select>
+        <select 
+          value={filterPaymentStatus} 
+          onChange={e => setFilterPaymentStatus(e.target.value)}
+          className="bg-gray-900 border border-gray-700 px-3 py-2 rounded text-xs text-white"
+        >
+          <option value="">Semua Status Pembayaran</option>
+          <option value="PAID">PAID</option>
+          <option value="UNPAID">UNPAID</option>
+        </select>
+      </div>
+    </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse whitespace-nowrap">
-              <thead>
-                <tr className="bg-gray-900 text-gray-400 text-sm border-b border-gray-700">
-                  <th className="p-4">Invoice / Waktu</th>
-                  <th className="p-4">Game & Item</th>
-                  <th className="p-4">Data Akun / Kontak</th>
-                  <th className="p-4">Total</th>
-                  <th className="p-4">Status Bayar / Pesanan</th>
-                  <th className="p-4 text-center">Aksi & Log</th>
-                </tr>
-              </thead>
-              <tbody className="text-sm">
-                {transactions.map(t => (
-                  <tr key={t.id} className="border-b border-gray-700 hover:bg-gray-900/50">
-                    <td className="p-4">
-                      <div className="font-bold text-blue-400">{t.invoice}</div>
-                      <div className="text-xs text-gray-500">{t.created_at}</div>
-                    </td>
-                    <td className="p-4">
-                      <div className="font-semibold">{t.game_name}</div>
-                      <div className="text-xs text-gray-400">{t.product_name}</div>
-                    </td>
-                    <td className="p-4">
-                      <div className="font-mono text-xs">{t.account_data}</div>
-                      <div className="text-xs text-gray-400">{t.contact}</div>
-                    </td>
-                    <td className="p-4 font-bold text-green-400">Rp {t.total_price.toLocaleString('id-ID')}</td>
-                    <td className="p-4 space-y-1">
-                      <div>
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${t.payment_status === 'PAID' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>{t.payment_status}</span>
-                      </div>
-                      <div>
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${t.order_status === 'SUCCESS' ? 'bg-green-500/20 text-green-400' : t.order_status === 'PROCESSING' ? 'bg-blue-500/20 text-blue-400' : 'bg-yellow-500/20 text-yellow-400'}`}>{t.order_status}</span>
-                      </div>
-                    </td>
-                    <td className="p-4 text-center">
-                      <div className="flex gap-2 justify-center items-center">
-                        <button onClick={() => updateOrderStatus(t.id, 'SUCCESS')} className="bg-green-600 hover:bg-green-700 px-2 py-1 rounded text-xs font-bold">Sukses</button>
-                        <button onClick={() => updateOrderStatus(t.id, 'FAILED')} className="bg-red-600 hover:bg-red-700 px-2 py-1 rounded text-xs font-bold">Batal</button>
-                        <button onClick={() => setActiveAuditLogs(t.audit_logs || [])} className="bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded text-xs">📜 Log</button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-                {transactions.length === 0 && (
-                  <tr>
-                    <td colSpan="6" className="text-center p-6 text-gray-500">Tidak ada transaksi ditemukan.</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+    <div className="overflow-x-auto">
+      <table className="w-full text-left border-collapse whitespace-nowrap text-xs">
+        <thead>
+          <tr className="bg-gray-900 text-gray-400 border-b border-gray-700">
+            <th className="p-3">Invoice</th>
+            <th className="p-3">Game & Item</th>
+            <th className="p-3">Akun & Kontak</th>
+            <th className="p-3">Total</th>
+            <th className="p-3">Status (Bayar / Order)</th>
+            <th className="p-3">Aksi</th>
+          </tr>
+        </thead>
+        <tbody>
+          {transactions.map(t => (
+            <tr key={t.id} className="border-b border-gray-700 hover:bg-gray-900/50">
+              <td className="p-3 font-mono font-bold text-blue-400">{t.invoice}</td>
+              <td className="p-3">
+                <div className="font-semibold">{t.game_name}</div>
+                <div className="text-[10px] text-gray-400">{t.product_name}</div>
+              </td>
+              <td className="p-3">
+                <div className="font-mono">{t.account_data}</div>
+                <div className="text-[10px] text-gray-400">{t.contact}</div>
+              </td>
+              <td className="p-3 font-bold text-green-400">Rp {t.total_price.toLocaleString('id-ID')}</td>
+              
+              {/* Kolom Status Pembayaran & Order */}
+              <td className="p-3 space-y-1">
+                <div>
+                  <span className="text-[10px] text-gray-400">Bayar: </span>
+                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${t.payment_status === 'PAID' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
+                    {t.payment_status || 'UNPAID'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-gray-400">Order: </span>
+                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${t.order_status === 'SUCCESS' ? 'bg-green-500/20 text-green-400' : t.order_status === 'PROCESSING' ? 'bg-blue-500/20 text-blue-400' : 'bg-yellow-500/20 text-yellow-400'}`}>
+                    {t.order_status}
+                  </span>
+                </div>
+              </td>
+
+              {/* Kolom Aksi */}
+              <td className="p-3">
+                <div className="flex gap-1 justify-center items-center flex-wrap">
+                  {t.payment_status === 'UNPAID' && (
+                    <button 
+                      onClick={async () => {
+                        try {
+                          const res = await fetch(`http://localhost:5000/api/admin/transactions/${t.id}/payment-status`, {
+                            method: 'PUT',
+                            headers: { 
+                              'Content-Type': 'application/json', 
+                              'Authorization': `Bearer ${token}` 
+                            },
+                            body: JSON.stringify({ payment_status: 'PAID' })
+                          });
+
+                          const contentType = res.headers.get("content-type");
+                          let data = {};
+                          if (contentType && contentType.includes("application/json")) {
+                            data = await res.json();
+                          }
+
+                          if (res.ok) {
+                            alert('Status pembayaran berhasil diubah menjadi PAID!');
+                            loadTransactions();
+                          } else {
+                            alert(data.message || `Gagal mengubah status (Error Code: ${res.status})`);
+                          }
+                        } catch (err) {
+                          console.error('Error detail:', err);
+                          alert('Terjadi kesalahan koneksi ke server Flask! Pastikan backend sudah berjalan.');
+                        }
+                      }} 
+                      className="bg-purple-600 hover:bg-purple-700 px-2 py-1 rounded text-xs font-bold transition"
+                    >
+                      Set Paid
+                    </button>
+                  )}
+                  <button onClick={() => updateOrderStatus(t.id, 'SUCCESS')} className="bg-green-600 hover:bg-green-700 px-2 py-1 rounded text-xs font-bold transition">Sukses</button>
+                  <button onClick={() => updateOrderStatus(t.id, 'FAILED')} className="bg-red-600 hover:bg-red-700 px-2 py-1 rounded text-xs font-bold transition">Batal</button>
+                  <button onClick={() => setActiveAuditLogs(t.audit_logs || [])} className="bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded text-xs transition">📜 Log</button>
+                </div>
+              </td>
+            </tr>
+          ))}
+          {transactions.length === 0 && (
+            <tr>
+              <td colSpan="6" className="text-center p-6 text-gray-500">Tidak ada transaksi ditemukan.</td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  </div>
+)}
 
       {/* Modal Audit Log */}
-      {activeAuditLogs && (
-        <div className="fixed inset-0 bg-black/70 flex justify-center items-center z-50 p-4">
-          <div className="bg-gray-800 border border-gray-700 rounded-xl max-w-lg w-full p-6 space-y-4">
-            <div className="flex justify-between items-center border-b border-gray-700 pb-3">
-              <h3 className="font-bold text-lg text-white">Riwayat Audit Log Transaksi</h3>
-              <button onClick={() => setActiveAuditLogs(null)} className="text-gray-400 hover:text-white font-bold">✕</button>
-            </div>
-            <div className="space-y-3 max-h-80 overflow-y-auto">
-              {activeAuditLogs.length === 0 ? (
-                <p className="text-sm text-gray-400 text-center py-4">Belum ada catatan log untuk transaksi ini.</p>
-              ) : (
-                activeAuditLogs.map((log, idx) => (
-                  <div key={idx} className="bg-gray-900 p-3 rounded border border-gray-700 text-xs space-y-1">
-                    <div className="flex justify-between text-gray-400">
-                      <span className="font-bold text-blue-400">{log.action}</span>
-                      <span>{log.timestamp}</span>
-                    </div>
-                    <div>Status: <span className="text-yellow-400">{log.old_status}</span> ➔ <span className="text-green-400">{log.new_status}</span></div>
-                    {log.admin_note && <div className="text-gray-300 italic">Catatan: "{log.admin_note}"</div>}
-                  </div>
-                ))
+{activeAuditLogs && (
+  <div className="fixed inset-0 bg-black/70 flex justify-center items-center z-50 p-4">
+    <div className="bg-gray-800 border border-gray-700 rounded-xl max-w-lg w-full p-6 space-y-4 text-white">
+      <div className="flex justify-between items-center border-b border-gray-700 pb-3">
+        <h3 className="font-bold text-lg text-white">Riwayat Audit Log Transaksi</h3>
+        <button onClick={() => setActiveAuditLogs(null)} className="text-gray-400 hover:text-white font-bold">✕</button>
+      </div>
+      
+      <div className="space-y-3 max-h-80 overflow-y-auto">
+        {!Array.isArray(activeAuditLogs) || activeAuditLogs.length === 0 ? (
+          <p className="text-sm text-gray-400 text-center py-4">
+            {typeof activeAuditLogs === 'string' ? activeAuditLogs : 'Belum ada catatan log untuk transaksi ini.'}
+          </p>
+        ) : (
+          activeAuditLogs.map((log, idx) => (
+            <div key={idx} className="bg-gray-900 p-3 rounded border border-gray-700 text-xs space-y-1">
+              <div className="flex justify-between text-gray-400">
+                <span className="font-bold text-blue-400">{log.action || 'UPDATE'}</span>
+                <span>{log.timestamp || '-'}</span>
+              </div>
+              <div>
+                Status: <span className="text-yellow-400">{log.old_status || '-'}</span> ➔ <span className="text-green-400">{log.new_status || '-'}</span>
+              </div>
+              {log.admin_note && (
+                <div className="text-gray-300 italic">Catatan: "{log.admin_note}"</div>
               )}
             </div>
-            <button onClick={() => setActiveAuditLogs(null)} className="w-full bg-blue-600 hover:bg-blue-700 py-2 rounded text-sm font-bold">Tutup</button>
-          </div>
-        </div>
-      )}
+          ))
+        )}
+      </div>
+
+      <button 
+        onClick={() => setActiveAuditLogs(null)} 
+        className="w-full bg-blue-600 hover:bg-blue-700 py-2 rounded text-sm font-bold transition"
+      >
+        Tutup
+      </button>
+    </div>
+  </div>
+)}
 
       {activeTab === 'reports' && (
         <div className="bg-white text-black p-8 rounded-xl shadow-lg">
