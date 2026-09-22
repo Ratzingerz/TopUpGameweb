@@ -54,28 +54,42 @@ export default function UserTransactions() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto p-4 space-y-6">
-      <h1 className="text-2xl font-bold text-white">Riwayat Transaksi Saya</h1>
+    <div className="max-w-4xl mx-auto p-4 space-y-6 text-white">
+      <div className="flex justify-between items-center border-b border-gray-700 pb-4">
+        <h1 className="text-2xl font-bold">Riwayat Transaksi Saya</h1>
+        <button 
+          onClick={() => navigate('/')} 
+          className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-xl text-sm font-bold transition"
+        >
+          Beranda
+        </button>
+      </div>
       
       <div className="space-y-4">
-        {transactions.map((trx, idx) => (
-          <div key={idx} className="bg-gray-800 p-5 rounded-xl border border-gray-700 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shadow">
+        {transactions.map((trx) => (
+          <div key={trx.id || trx.invoice} className="bg-gray-800 p-5 rounded-xl border border-gray-700 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shadow">
             <div className="space-y-1">
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 flex-wrap">
                 <span className="font-bold text-blue-400 text-sm">{trx.invoice}</span>
-                <span className={`px-2 py-0.5 rounded text-xs font-bold ${trx.payment_status === 'PAID' ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'}`}>
+                <span className={`px-2 py-0.5 rounded text-xs font-bold ${
+                  trx.payment_status === 'PAID' ? 'bg-green-500/20 text-green-400' : 
+                  trx.payment_status === 'EXPIRED' ? 'bg-red-500/20 text-red-400' : 
+                  'bg-yellow-500/20 text-yellow-400'
+                }`}>
                   {trx.payment_status}
                 </span>
                 <span className="bg-blue-500/20 text-blue-300 px-2 py-0.5 rounded text-xs font-bold">
                   {trx.order_status}
                 </span>
               </div>
-              <div className="text-sm font-bold text-white">{trx.product_name} (x{trx.qty})</div>
+              <div className="text-sm font-bold text-white">{trx.product_name} {trx.qty ? `(x${trx.qty})` : ''}</div>
               <div className="text-xs text-gray-400">Akun: {trx.account_data} | Pembayaran: {trx.payment_method}</div>
             </div>
 
             <div className="flex sm:flex-col items-end justify-between w-full sm:w-auto gap-2">
-              <div className="text-green-400 font-extrabold text-sm">Rp {trx.total_price.toLocaleString('id-ID')}</div>
+              <div className="text-green-400 font-extrabold text-sm">
+                Rp {trx.total_price?.toLocaleString('id-ID') || 0}
+              </div>
               <button 
                 onClick={() => navigate(`/invoice/${trx.invoice}`)}
                 className="px-4 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-xs font-bold transition text-white"

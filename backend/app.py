@@ -8,7 +8,6 @@ from flask_cors import CORS
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from datetime import datetime, timezone, timedelta
-from flask_cors import CORS
 
 app = Flask(__name__)
 CORS(app)
@@ -38,6 +37,7 @@ class Game(db.Model):
     name = db.Column(db.String(100), nullable=False)
     slug = db.Column(db.String(100), unique=True, nullable=False)
     image_url = db.Column(db.String(255))
+    is_active = db.Column(db.Boolean, default=True)
     account_fields = db.Column(db.String(255), default='User ID')
     products = db.relationship('Product', backref='game', lazy=True, cascade="all, delete-orphan")
 
@@ -47,12 +47,14 @@ class Product(db.Model):
     name = db.Column(db.String(100), nullable=False)
     price = db.Column(db.Float, nullable=False)
     image_url = db.Column(db.String(255))
+    is_active = db.Column(db.Boolean, default=True)
 
 class PaymentMethod(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     game_id = db.Column(db.Integer, nullable=True) # Jika null, berlaku semua game
     name = db.Column(db.String(50), nullable=False)
     fee = db.Column(db.Float, default=0)
+    is_active = db.Column(db.Boolean, default=True)
 
 class Promo(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -88,6 +90,12 @@ class TransactionAuditLog(db.Model):
     new_status = db.Column(db.String(20), nullable=True)
     admin_note = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    
+class Banner(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(100), nullable=True)
+    image_url = db.Column(db.String(255), nullable=False)
+    is_active = db.Column(db.Boolean, default=True)
 
 
 # ==========================================
@@ -127,10 +135,10 @@ def admin_required(f):
             data = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
             if data.get('role') != 'admin':
                 return jsonify({'message': 'Akses ditolak, khusus admin!'}), 403
-            current_user = User.query.get(data['user_id'])
+            current_admin = User.query.get(data['user_id'])
         except Exception as e:
             return jsonify({'message': 'Token admin tidak valid!'}), 401
-        return f(current_user, *args, **kwargs)
+        return f(current_admin, *args, **kwargs)
     return decorated
 
 
@@ -147,25 +155,30 @@ def uploaded_file(filename):
 # ==========================================
 @app.route('/api/games', methods=['GET'])
 def get_games():
-    games = Game.query.all()
+    games = Game.query.filter_by(is_active=True).all()
     data = []
     for g in games:
-        prods = [{'id': p.id, 'name': p.name, 'price': p.price, 'image_url': p.image_url} for p in g.products]
+        active_prods = [p for p in g.products if p.is_active]
+        prods = [{'id': p.id, 'name': p.name, 'price': p.price, 'image_url': p.image_url, 'is_active': p.is_active} for p in active_prods]
         data.append({
             'id': g.id, 
             'name': g.name, 
             'slug': g.slug, 
             'image_url': g.image_url, 
             'account_fields': g.account_fields,
+            'is_active': g.is_active,
             'products': prods
         })
     return jsonify({'data': data})
 
 @app.route('/api/games/<slug>', methods=['GET'])
 def get_game_detail(slug):
-    game = Game.query.filter_by(slug=slug).first_or_404()
-    prods = [{'id': p.id, 'name': p.name, 'price': p.price, 'image_url': p.image_url} for p in game.products]
-    payments = PaymentMethod.query.filter((PaymentMethod.game_id == None) | (PaymentMethod.game_id == game.id)).all()
+    game = Game.query.filter_by(slug=slug, is_active=True).first_or_404()
+    prods = [{'id': p.id, 'name': p.name, 'price': p.price, 'image_url': p.image_url, 'is_active': p.is_active} for p in game.products if p.is_active]
+    payments = PaymentMethod.query.filter(
+        PaymentMethod.is_active == True,
+        (PaymentMethod.game_id == None) | (PaymentMethod.game_id == game.id)
+    ).all()
     pays = [{'id': pm.id, 'name': pm.name, 'fee': pm.fee} for pm in payments]
     
     return jsonify({
@@ -175,7 +188,8 @@ def get_game_detail(slug):
                 'name': game.name, 
                 'slug': game.slug, 
                 'image_url': game.image_url, 
-                'account_fields': game.account_fields
+                'account_fields': game.account_fields,
+                'is_active': game.is_active
             },
             'products': prods,
             'payments': pays
@@ -197,7 +211,6 @@ def checkout():
     data = request.json
     user_id = None
     
-    # Cek dan ambil user_id dari token Authorization
     auth_header = request.headers.get('Authorization')
     if auth_header:
         try:
@@ -209,14 +222,13 @@ def checkout():
         except Exception as e:
             print("Error decode token saat checkout:", e)
             
-    # Format invoice tanpa tanda '#' agar tidak merusak router frontend
     date_str = datetime.now(timezone.utc).strftime("%Y%m%d")
     count_today = Transaction.query.filter(Transaction.invoice.like(f"TOP-{date_str}-%")).count() + 1
     invoice = f"TOP-{date_str}-{count_today:03d}"
     
     trx = Transaction(
         invoice=invoice, 
-        user_id=user_id, # Sekarang akan terisi ID user jika frontend mengirim token!
+        user_id=user_id,
         account_data=data.get('account_data'),
         contact=data.get('contact'), 
         qty=data.get('qty', 1), 
@@ -266,7 +278,6 @@ def admin_login():
 
     user = User.query.filter_by(username=username, role='admin').first()
 
-    # Diperbaiki menggunakan user.password_hash sesuai struktur database
     if not user or not check_password_hash(user.password_hash, password):
         return jsonify({"message": "Username atau password salah!"}), 401
 
@@ -313,30 +324,40 @@ def save_image(file):
         return f"http://127.0.0.1:5000/uploads/{filename}"
     return None
 
-@app.route('/api/admin/games', methods=['POST'])
+@app.route('/api/admin/games', methods=['GET', 'POST'])
 @admin_required
-def admin_add_game(current_admin):
-    # Cek apakah request dikirim sebagai JSON atau FormData
-    if request.is_json:
-        data = request.get_json()
-        name = data.get('name')
-        slug = data.get('slug')
-        account_fields = data.get('account_fields', 'User ID')
-        image_url = data.get('image_url')
-    else:
-        name = request.form.get('name')
-        slug = request.form.get('slug')
-        account_fields = request.form.get('account_fields', 'User ID')
-        image_url = save_image(request.files.get('image'))
+def admin_games(current_admin):
+    if request.method == 'GET':
+        games = Game.query.all()
+        data = []
+        for g in games:
+            prods = [{'id': p.id, 'game_id': p.game_id, 'name': p.name, 'price': p.price, 'image_url': p.image_url, 'is_active': p.is_active} for p in g.products]
+            data.append({
+                'id': g.id,
+                'name': g.name,
+                'slug': g.slug,
+                'account_fields': g.account_fields,
+                'image_url': g.image_url,
+                'is_active': g.is_active,
+                'products': prods
+            })
+        return jsonify({'data': data})
+
+    # POST (Tambah Game dengan is_active)
+    name = request.form.get('name')
+    slug = request.form.get('slug')
+    account_fields = request.form.get('account_fields', 'User ID')
+    is_active_val = request.form.get('is_active', 'true')
+    is_active = str(is_active_val).lower() == 'true'
+    image_url = save_image(request.files.get('image'))
     
     if not name or not slug:
         return jsonify({'message': 'Nama dan Slug game wajib diisi!'}), 400
         
-    # Cek apakah slug sudah ada
     if Game.query.filter_by(slug=slug).first():
         return jsonify({'message': 'Slug game sudah terdaftar!'}), 400
 
-    db.session.add(Game(name=name, slug=slug, image_url=image_url, account_fields=account_fields))
+    db.session.add(Game(name=name, slug=slug, image_url=image_url, account_fields=account_fields, is_active=is_active))
     db.session.commit()
     return jsonify({'message': 'Game berhasil ditambahkan'})
 
@@ -345,20 +366,17 @@ def admin_add_game(current_admin):
 def admin_edit_game(current_admin, id):
     game = Game.query.get_or_404(id)
     
-    if request.is_json:
-        data = request.get_json()
-        game.name = data.get('name', game.name)
-        game.slug = data.get('slug', game.slug)
-        game.account_fields = data.get('account_fields', game.account_fields)
-        if 'image_url' in data:
-            game.image_url = data.get('image_url')
-    else:
-        game.name = request.form.get('name', game.name)
-        game.slug = request.form.get('slug', game.slug)
-        game.account_fields = request.form.get('account_fields', game.account_fields)
-        img_url = save_image(request.files.get('image'))
-        if img_url: 
-            game.image_url = img_url
+    game.name = request.form.get('name', game.name)
+    game.slug = request.form.get('slug', game.slug)
+    game.account_fields = request.form.get('account_fields', game.account_fields)
+    
+    is_active_val = request.form.get('is_active')
+    if is_active_val is not None:
+        game.is_active = str(is_active_val).lower() == 'true'
+
+    img_url = save_image(request.files.get('image'))
+    if img_url: 
+        game.image_url = img_url
         
     db.session.commit()
     return jsonify({'message': 'Game berhasil diupdate'})
@@ -377,8 +395,11 @@ def admin_add_product(current_admin):
     game_id = request.form.get('game_id')
     name = request.form.get('name')
     price = request.form.get('price')
+    is_active_val = request.form.get('is_active', 'true')
+    is_active = str(is_active_val).lower() == 'true'
     img_url = save_image(request.files.get('image'))
-    db.session.add(Product(game_id=game_id, name=name, price=price, image_url=img_url))
+    
+    db.session.add(Product(game_id=game_id, name=name, price=price, image_url=img_url, is_active=is_active))
     db.session.commit()
     return jsonify({'message': 'Item ditambahkan'})
 
@@ -386,9 +407,14 @@ def admin_add_product(current_admin):
 @admin_required
 def admin_edit_product(current_admin, id):
     prod = Product.query.get_or_404(id)
-    prod.game_id = request.form.get('game_id')
-    prod.name = request.form.get('name')
-    prod.price = request.form.get('price')
+    prod.game_id = request.form.get('game_id', prod.game_id)
+    prod.name = request.form.get('name', prod.name)
+    prod.price = request.form.get('price', prod.price)
+    
+    is_active_val = request.form.get('is_active')
+    if is_active_val is not None:
+        prod.is_active = str(is_active_val).lower() == 'true'
+
     img_url = save_image(request.files.get('image'))
     if img_url: 
         prod.image_url = img_url
@@ -433,11 +459,16 @@ def admin_payments(current_admin):
         payments = PaymentMethod.query.all()
         data = []
         for p in payments:
-            data.append({'id': p.id, 'name': p.name, 'fee': p.fee, 'game_id': p.game_id})
+            data.append({'id': p.id, 'name': p.name, 'fee': p.fee, 'game_id': p.game_id, 'is_active': p.is_active})
         return jsonify({'data': data})
     data = request.json
     game_id = data.get('game_id')
-    db.session.add(PaymentMethod(game_id=game_id if game_id else None, name=data['name'], fee=data.get('fee', 0)))
+    db.session.add(PaymentMethod(
+        game_id=game_id if game_id else None, 
+        name=data['name'], 
+        fee=data.get('fee', 0),
+        is_active=data.get('is_active', True)
+    ))
     db.session.commit()
     return jsonify({'message': 'Pembayaran dibuat'})
 
@@ -453,6 +484,8 @@ def admin_payment_detail(current_admin, id):
         payment.fee = data.get('fee', payment.fee)
         game_id = data.get('game_id')
         payment.game_id = game_id if game_id else None
+        if 'is_active' in data:
+            payment.is_active = data.get('is_active')
     db.session.commit()
     return jsonify({'message': 'Sukses'})
 
@@ -565,7 +598,6 @@ def admin_update_transaction_status(current_admin, id):
     if admin_note is not None:
         trx.admin_note = admin_note
         
-    # Catat ke Audit Log dengan menyertakan admin_id yang sedang login
     log = TransactionAuditLog(
         transaction_id=trx.id,
         admin_id=current_admin.id,
@@ -589,11 +621,9 @@ def admin_update_payment_status(current_admin, id):
     
     if new_payment_status:
         trx.payment_status = new_payment_status
-        # Jika dibayar, otomatis ubah status pesanan menjadi PROCESSING
         if new_payment_status == 'PAID':
             trx.order_status = 'PROCESSING'
             
-    # Catat ke audit log agar rapi sesuai sistem Anda
     log = TransactionAuditLog(
         transaction_id=trx.id,
         admin_id=current_admin.id,
@@ -634,9 +664,8 @@ def get_invoice_detail(invoice_id):
 def pay_transaction(id):
     transaction = Transaction.query.get_or_404(id)
     transaction.payment_status = 'PAID'
-    transaction.order_status = 'PROCESSING' # Otomatis ubah status pesanan jadi diproses
+    transaction.order_status = 'PROCESSING'
 
-    # Tambahkan ke audit log jika ada
     new_log = TransactionAuditLog(
         transaction_id=transaction.id,
         action="PAYMENT_SUCCESS",
@@ -678,6 +707,177 @@ def home():
         "message": "Backend MyTopup API Berjalan dengan Baik!"
     })
 
+# ==========================================
+# API ADMIN: BANNER / CAROUSEL MANAGEMENT
+# ==========================================
+@app.route('/api/banners', methods=['GET'])
+def get_public_banners():
+    banners = Banner.query.filter_by(is_active=True).all()
+    return jsonify({'data': [{'id': b.id, 'title': b.title, 'image_url': b.image_url} for b in banners]})
+
+@app.route('/api/admin/banners', methods=['GET', 'POST'])
+@admin_required
+def admin_banners(current_admin):
+    if request.method == 'GET':
+        banners = Banner.query.all()
+        return jsonify({'data': [{'id': b.id, 'title': b.title, 'image_url': b.image_url, 'is_active': b.is_active} for b in banners]})
+    
+    title = request.form.get('title')
+    image_url = save_image(request.files.get('image'))
+    
+    if not image_url:
+        return jsonify({'message': 'Gambar banner wajib diunggah!'}), 400
+        
+    db.session.add(Banner(title=title, image_url=image_url, is_active=True))
+    db.session.commit()
+    return jsonify({'success': True, 'message': 'Banner berhasil ditambahkan'})
+
+@app.route('/api/admin/banners/<int:id>', methods=['DELETE'])
+@admin_required
+def admin_delete_banner(current_admin, id):
+    banner = Banner.query.get_or_404(id)
+    db.session.delete(banner)
+    db.session.commit()
+    return jsonify({'success': True, 'message': 'Banner berhasil dihapus'})
+
+# ==========================================
+# API ADMIN: DASHBOARD (Statistik, Recent, Chart, Popular)
+# ==========================================
+@app.route('/api/admin/dashboard/stats', methods=['GET'])
+@admin_required
+def admin_dashboard_stats(current_admin):
+    # Waktu sekarang (UTC)
+    now = datetime.now(timezone.utc)
+    start_of_today = datetime(now.year, now.month, now.day, tzinfo=timezone.utc)
+    
+    # 1. Statistik Utama
+    total_transactions = Transaction.query.count()
+    
+    # Transaksi sukses (payment_status == 'PAID' atau order_status == 'SUCCESS')
+    success_transactions = Transaction.query.filter_by(payment_status='PAID').count()
+    
+    # Total Pendapatan Keseluruhan (hanya yang PAID)
+    all_paid_trx = Transaction.query.filter_by(payment_status='PAID').all()
+    total_revenue = sum(t.total_price for t in all_paid_trx)
+    
+    # Pendapatan Hari Ini
+    today_paid_trx = Transaction.query.filter(
+        Transaction.payment_status == 'PAID',
+        Transaction.created_at >= start_of_today
+    ).all()
+    today_revenue = sum(t.total_price for t in today_paid_trx)
+    today_transactions_count = len(today_paid_trx)
+    
+    # Total User (role = 'user')
+    total_users = User.query.filter_by(role='user').count()
+
+    # 2. Recent Transactions (5 transaksi terakhir)
+    recent_trx = Transaction.query.order_by(Transaction.id.desc()).limit(5).all()
+    recent_data = [{
+        'invoice': t.invoice,
+        'game_name': t.game_name,
+        'product_name': t.product_name,
+        'contact': t.contact,
+        'total_price': t.total_price,
+        'payment_status': t.payment_status,
+        'order_status': t.order_status,
+        'created_at': t.created_at.strftime("%Y-%m-%d %H:%M:%S") if t.created_at else ""
+    } for t in recent_trx]
+
+    # 3. Popular Games (Berdasarkan jumlah transaksi terbanyak per game_name)
+    from sqlalchemy import func
+    popular_query = db.session.query(
+        Transaction.game_name, 
+        func.count(Transaction.id).label('total_sales')
+    ).group_by(Transaction.game_name).order_by(func.count(Transaction.id).desc()).limit(5).all()
+    
+    popular_games = [{
+        'game_name': row.game_name or 'Lainnya',
+        'total_sales': row.total_sales
+    } for row in popular_query]
+
+    # 4. Chart Data (Pendapatan 7 hari terakhir untuk grafik)
+    chart_data = []
+    for i in range(6, -1, -1):
+        day_date = now - timedelta(days=i)
+        day_start = datetime(day_date.year, day_date.month, day_date.day, tzinfo=timezone.utc)
+        day_end = day_start + timedelta(days=1)
+        
+        daily_trx = Transaction.query.filter(
+            Transaction.payment_status == 'PAID',
+            Transaction.created_at >= day_start,
+            Transaction.created_at < day_end
+        ).all()
+        
+        daily_revenue = sum(t.total_price for t in daily_trx)
+        chart_data.append({
+            'date': day_start.strftime("%Y-%m-%d"),
+            'day_name': day_start.strftime("%A"),
+            'revenue': daily_revenue,
+            'count': len(daily_trx)
+        })
+
+    return jsonify({
+        'success': True,
+        'stats': {
+            'total_transactions': total_transactions,
+            'success_transactions': success_transactions,
+            'total_revenue': total_revenue,
+            'today_revenue': today_revenue,
+            'today_transactions_count': today_transactions_count,
+            'total_users': total_users
+        },
+        'recent_transactions': recent_data,
+        'popular_games': popular_games,
+        'chart_revenue': chart_data
+    })
+    
+# ==========================================
+# API ADMIN: USER MANAGEMENT
+# ==========================================
+@app.route('/api/admin/users', methods=['GET'])
+@admin_required
+def admin_get_users(current_admin):
+    users = User.query.all()
+    return jsonify({
+        'success': True,
+        'data': [{
+            'id': u.id,
+            'username': u.username,
+            'role': u.role,
+            'created_at': u.created_at.strftime("%Y-%m-%d %H:%M:%S") if hasattr(u, 'created_at') and u.created_at else ""
+        } for u in users]
+    })
+
+@app.route('/api/admin/users/<int:user_id>/role', methods=['PUT'])
+@admin_required
+def admin_update_user_role(current_admin, user_id):
+    user = User.query.get_or_404(user_id)
+    data = request.get_json()
+    new_role = data.get('role')
+    
+    if new_role not in ['admin', 'user']:
+        return jsonify({'success': False, 'message': 'Role tidak valid (pilih: admin atau user)'}), 400
+    
+    # Mencegah admin mengubah rolenya sendiri menjadi user (supaya tidak terkunci dari panel admin)
+    if user.id == current_admin.id and new_role == 'user':
+        return jsonify({'success': False, 'message': 'Tidak dapat menurunkan role akun sendiri!'}), 400
+
+    user.role = new_role
+    db.session.commit()
+    return jsonify({'success': True, 'message': f'Role user {user.username} berhasil diubah menjadi {new_role}'})
+
+@app.route('/api/admin/users/<int:user_id>', methods=['DELETE'])
+@admin_required
+def admin_delete_user(current_admin, user_id):
+    user = User.query.get_or_404(user_id)
+    
+    if user.id == current_admin.id:
+        return jsonify({'success': False, 'message': 'Tidak dapat menghapus akun sendiri yang sedang aktif!'}), 400
+        
+    db.session.delete(user)
+    db.session.commit()
+    return jsonify({'success': True, 'message': 'User berhasil dihapus'})
 
 # ==========================================
 # SETUP AWAL
@@ -686,7 +886,6 @@ def setup_database():
     with app.app_context():
         db.create_all()
         
-        # Cek apakah akun admin sudah ada, jika belum buat otomatis
         admin_check = User.query.filter_by(username='admin', role='admin').first()
         if not admin_check:
             admin = User(username='admin', password_hash=generate_password_hash('admin123'), role='admin')
