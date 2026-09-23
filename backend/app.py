@@ -8,6 +8,7 @@ from flask_cors import CORS
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from datetime import datetime, timezone, timedelta
+from sqlalchemy import extract, func
 
 app = Flask(__name__)
 CORS(app)
@@ -96,6 +97,8 @@ class Banner(db.Model):
     title = db.Column(db.String(100), nullable=True)
     image_url = db.Column(db.String(255), nullable=False)
     is_active = db.Column(db.Boolean, default=True)
+    promo_code = db.Column(db.String(50), nullable=True)
+    game_id = db.Column(db.Integer, nullable=True)
 
 
 # ==========================================
@@ -712,23 +715,57 @@ def home():
 # ==========================================
 @app.route('/api/banners', methods=['GET'])
 def get_public_banners():
-    banners = Banner.query.filter_by(is_active=True).all()
-    return jsonify({'data': [{'id': b.id, 'title': b.title, 'image_url': b.image_url} for b in banners]})
+    try:
+        banners = Banner.query.filter_by(is_active=True).all()
+        result = []
+        for b in banners:
+            # Ambil slug game jika banner ini terhubung ke game tertentu
+            game_slug = None
+            if b.game_id:
+                game = Game.query.get(b.game_id)
+                if game:
+                    game_slug = game.slug
+
+            # Pastikan URL gambar memiliki path folder yang benar (sesuaikan '/static/uploads/' dengan folder penyimpananmu)
+            img_url = b.image_url
+            if img_url and not img_url.startswith('http'):
+                img_url = f"http://localhost:5000/static/uploads/{img_url}" # Sesuaikan folder uploads kamu
+
+            result.append({
+                'id': b.id,
+                'title': b.title,
+                'image_url': img_url,
+                'promo_code': b.promo_code,
+                'game_id': b.game_id,
+                'game_slug': game_slug,
+                'is_active': b.is_active
+            })
+        return jsonify({'data': result}), 200
+    except Exception as e:
+        return jsonify({'message': str(e)}), 500
 
 @app.route('/api/admin/banners', methods=['GET', 'POST'])
 @admin_required
 def admin_banners(current_admin):
     if request.method == 'GET':
         banners = Banner.query.all()
-        return jsonify({'data': [{'id': b.id, 'title': b.title, 'image_url': b.image_url, 'is_active': b.is_active} for b in banners]})
+        return jsonify({'data': [{'id': b.id, 'title': b.title, 'image_url': b.image_url, 'promo_code': b.promo_code, 'game_id': b.game_id, 'is_active': b.is_active} for b in banners]})
     
     title = request.form.get('title')
+    promo_code = request.form.get('promo_code')
+    game_id = request.form.get('game_id')
     image_url = save_image(request.files.get('image'))
     
     if not image_url:
         return jsonify({'message': 'Gambar banner wajib diunggah!'}), 400
         
-    db.session.add(Banner(title=title, image_url=image_url, is_active=True))
+    db.session.add(Banner(
+        title=title, 
+        image_url=image_url, 
+        promo_code=promo_code if promo_code else None,
+        game_id=game_id if game_id else None,
+        is_active=True
+    ))
     db.session.commit()
     return jsonify({'success': True, 'message': 'Banner berhasil ditambahkan'})
 
@@ -878,6 +915,71 @@ def admin_delete_user(current_admin, user_id):
     db.session.delete(user)
     db.session.commit()
     return jsonify({'success': True, 'message': 'User berhasil dihapus'})
+
+# ==========================================
+# API ADMIN: REPORTING & ANALYTICS
+# ==========================================
+@app.route('/api/admin/reports/summary', methods=['GET'])
+@admin_required
+def admin_report_summary(current_admin):
+    period = request.args.get('period', 'daily') # daily, monthly, yearly
+    
+    query = db.session.query(Transaction)
+    # Filter hanya transaksi yang sukses/processing
+    query = query.filter(Transaction.order_status.in_(['SUCCESS', 'PROCESSING']))
+    
+    data = []
+    if period == 'daily':
+        # Mengelompokkan berdasarkan Tanggal (YYYY-MM-DD)
+        results = db.session.query(
+            func.date(Transaction.created_at).label('date'),
+            func.count(Transaction.id).label('total_orders'),
+            func.sum(Transaction.total_price).label('total_revenue')
+        ).filter(Transaction.order_status.in_(['SUCCESS', 'PROCESSING'])).\
+          group_by(func.date(Transaction.created_at)).order_by(func.date(Transaction.created_at).desc()).all()
+          
+        data = [{
+            'label': str(r.date),
+            'total_orders': r.total_orders,
+            'total_revenue': float(r.total_revenue or 0)
+        } for r in results]
+        
+    elif period == 'monthly':
+        # Mengelompokkan berdasarkan Tahun & Bulan (YYYY-MM)
+        results = db.session.query(
+            extract('year', Transaction.created_at).label('year'),
+            extract('month', Transaction.created_at).label('month'),
+            func.count(Transaction.id).label('total_orders'),
+            func.sum(Transaction.total_price).label('total_revenue')
+        ).filter(Transaction.order_status.in_(['SUCCESS', 'PROCESSING'])).\
+          group_by(extract('year', Transaction.created_at), extract('month', Transaction.created_at)).all()
+          
+        data = [{
+            'label': f"{int(r.year)}-{str(int(r.month)).zfill(2)}",
+            'total_orders': r.total_orders,
+            'total_revenue': float(r.total_revenue or 0)
+        } for r in results]
+        
+    elif period == 'yearly':
+        # Mengelompokkan berdasarkan Tahun (YYYY)
+        results = db.session.query(
+            extract('year', Transaction.created_at).label('year'),
+            func.count(Transaction.id).label('total_orders'),
+            func.sum(Transaction.total_price).label('total_revenue')
+        ).filter(Transaction.order_status.in_(['SUCCESS', 'PROCESSING'])).\
+          group_by(extract('year', Transaction.created_at)).all()
+          
+        data = [{
+            'label': str(int(r.year)),
+            'total_orders': r.total_orders,
+            'total_revenue': float(r.total_revenue or 0)
+        } for r in results]
+
+    return jsonify({
+        'success': True,
+        'period': period,
+        'data': data
+    })
 
 # ==========================================
 # SETUP AWAL

@@ -63,7 +63,6 @@ export default function AdminDashboard() {
 
   const loadBaseData = async () => {
     try {
-      // ✅ UBAH KE ENDPOINT ADMIN AGAR SEMUA (AKTIF & NONAKTIF) MUNCUL
       const resGames = await fetch('http://localhost:5000/api/admin/games', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -233,7 +232,12 @@ export default function AdminDashboard() {
     const res = await fetch(url, {
       method,
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-      body: JSON.stringify({ code: promoCode, discount: Number(promoDiscount), min_spend: Number(promoMinSpend), is_active: promoIsActive })
+      body: JSON.stringify({ 
+        code: promoCode, 
+        discount: Number(promoDiscount), 
+        min_spend: Number(promoMinSpend || 0), 
+        is_active: promoIsActive 
+      })
     });
     if (res.ok) {
       alert('Promo berhasil disimpan!');
@@ -246,8 +250,13 @@ export default function AdminDashboard() {
     setPromoCode(''); setPromoDiscount(''); setPromoMinSpend(''); setPromoIsActive(true); setEditPromoId(null);
   };
 
+  // ✅ DIPERBAIKI: Menggunakan fallback aman agar tidak ada nilai undefined saat tombol Edit diklik
   const handleEditPromo = (pr) => {
-    setEditPromoId(pr.id); setPromoCode(pr.code); setPromoDiscount(pr.discount); setPromoMinSpend(pr.min_spend); setPromoIsActive(pr.is_active);
+    setEditPromoId(pr.id); 
+    setPromoCode(pr.code || ''); 
+    setPromoDiscount(pr.discount ?? pr.disc ?? pr.amount ?? ''); 
+    setPromoMinSpend(pr.min_spend ?? pr.minSpend ?? ''); 
+    setPromoIsActive(pr.is_active ?? true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -324,10 +333,10 @@ export default function AdminDashboard() {
             searchQuery={searchQuery} setSearchQuery={setSearchQuery} filterOrderStatus={filterOrderStatus} setFilterOrderStatus={setFilterOrderStatus} filterPaymentStatus={filterPaymentStatus} setFilterPaymentStatus={setFilterPaymentStatus} transactions={transactions} token={token} loadTransactions={loadTransactions} updateOrderStatus={updateOrderStatus} activeAuditLogs={activeAuditLogs} setActiveAuditLogs={setActiveAuditLogs} activeTab={activeTab}
           />
         );
+      case 'users':
+        return <UserManagement token={token} />;
       default:
         return null;
-        case 'users':
-          return <UserManagement token={token} />;
     }
   };
 
@@ -359,7 +368,7 @@ export default function AdminDashboard() {
               📊 Laporan
             </button>
             <button onClick={() => setActiveTab('users')} className={`px-4 py-2 rounded-lg font-bold transition text-xs sm:text-sm ${activeTab === 'users' ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>
-            👥 Users
+              👥 Users
             </button>
           </div>
         </div>

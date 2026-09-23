@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 
 export default function TransactionReports({
   searchQuery, setSearchQuery,
@@ -11,6 +11,29 @@ export default function TransactionReports({
   activeAuditLogs, setActiveAuditLogs,
   activeTab
 }) {
+  const [reportPeriod, setReportPeriod] = useState('daily');
+  const [reportData, setReportData] = useState([]);
+
+  useEffect(() => {
+    if (activeTab === 'reports') {
+      fetchReportSummary();
+    }
+  }, [activeTab, reportPeriod]);
+
+  const fetchReportSummary = async () => {
+    try {
+      const res = await fetch(`http://localhost:5000/api/admin/reports/summary?period=${reportPeriod}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (data.success) {
+        setReportData(data.data || []);
+      }
+    } catch (err) {
+      console.error('Gagal mengambil ringkasan laporan:', err);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Tampilan Tab Transactions / Logs */}
@@ -171,31 +194,64 @@ export default function TransactionReports({
 
       {/* Tampilan Tab Reports */}
       {activeTab === 'reports' && (
-        <div className="bg-white text-black p-8 rounded-xl shadow-lg">
-          <div className="flex justify-between items-center border-b-2 border-gray-800 pb-4 mb-6">
-            <h1 className="text-2xl font-bold uppercase">Laporan Pendapatan</h1>
-            <button onClick={() => window.print()} className="bg-gray-900 text-white px-4 py-2 rounded font-bold text-sm print:hidden">
-              🖨️ Cetak Laporan
-            </button>
+        <div className="bg-white text-black p-8 rounded-xl shadow-lg space-y-6">
+          <div className="flex flex-col md:flex-row justify-between items-center border-b-2 border-gray-800 pb-4 gap-4">
+            <h1 className="text-2xl font-bold uppercase">Laporan Pendapatan Berkala</h1>
+            
+            <div className="flex items-center gap-3 print:hidden">
+              <div className="flex bg-gray-200 p-1 rounded-lg text-xs font-bold">
+                <button 
+                  onClick={() => setReportPeriod('daily')} 
+                  className={`px-3 py-1.5 rounded-md transition ${reportPeriod === 'daily' ? 'bg-black text-white' : 'text-gray-700 hover:text-black'}`}
+                >
+                  Harian
+                </button>
+                <button 
+                  onClick={() => setReportPeriod('monthly')} 
+                  className={`px-3 py-1.5 rounded-md transition ${reportPeriod === 'monthly' ? 'bg-black text-white' : 'text-gray-700 hover:text-black'}`}
+                >
+                  Bulanan
+                </button>
+                <button 
+                  onClick={() => setReportPeriod('yearly')} 
+                  className={`px-3 py-1.5 rounded-md transition ${reportPeriod === 'yearly' ? 'bg-black text-white' : 'text-gray-700 hover:text-black'}`}
+                >
+                  Tahunan
+                </button>
+              </div>
+
+              <button onClick={() => window.print()} className="bg-gray-900 text-white px-4 py-2 rounded font-bold text-sm">
+                🖨️ Cetak Laporan
+              </button>
+            </div>
           </div>
-          <table className="w-full text-left border-collapse text-sm">
-            <thead>
-              <tr className="bg-gray-100 border-b border-gray-300">
-                <th className="py-2 px-2">Invoice</th>
-                <th className="py-2 px-2">Game & Item / Produk</th>
-                <th className="py-2 px-2 text-right">Pendapatan</th>
-              </tr>
-            </thead>
-            <tbody>
-              {transactions.filter(t => t.order_status === 'SUCCESS').map(t => (
-                <tr key={t.id} className="border-b border-gray-200">
-                  <td className="py-2 px-2 font-mono">{t.invoice}</td>
-                  <td className="py-2 px-2">{t.game_name} - {t.product_name}</td>
-                  <td className="py-2 px-2 font-bold text-right">Rp {t.total_price.toLocaleString('id-ID')}</td>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse text-sm">
+              <thead>
+                <tr className="bg-gray-100 border-b border-gray-300">
+                  <th className="py-3 px-3">Periode ({reportPeriod.toUpperCase()})</th>
+                  <th className="py-3 px-3 text-center">Total Transaksi Sukses</th>
+                  <th className="py-3 px-3 text-right">Total Pendapatan (Omset)</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {reportData.length === 0 ? (
+                  <tr>
+                    <td colSpan="3" className="text-center py-6 text-gray-500">Tidak ada data laporan untuk periode ini.</td>
+                  </tr>
+                ) : (
+                  reportData.map((row, idx) => (
+                    <tr key={idx} className="border-b border-gray-200 hover:bg-gray-50">
+                      <td className="py-3 px-3 font-mono font-semibold">{row.label}</td>
+                      <td className="py-3 px-3 text-center font-medium">{row.total_orders} Pesanan</td>
+                      <td className="py-3 px-3 font-bold text-right text-green-700">Rp {row.total_revenue.toLocaleString('id-ID')}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>
